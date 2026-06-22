@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="utf-8" />
+	<meta name="author" content="opiums / rosdistant-helper" />
+	<meta name="robots" content="noindex, nofollow" />
+	<title>Помощь росдистантикам</title>
+	<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+	<header class="hdr">
+		<img src="icons/48.png" alt="" width="28" height="28" />
+		<div>
+			<div class="hdr-title">Помощь росдистантикам</div>
+			<div class="hdr-sub">Rosdistant Helper</div>
+		</div>
+	</header>
+
+	<section class="card">
+		<label class="lbl" for="url">Ссылка на учебник или страницу Росдистанта</label>
+		<input id="url" class="inp" type="url" inputmode="url" autocomplete="off"
+			placeholder="https://edu.rosdistant.ru/… (необязательно)" />
+		<button id="btn-book" class="btn btn-primary">⬇️ Скачать учебник</button>
+		<p class="hint">
+			Оставьте поле пустым, чтобы скачать учебник с <b>текущей открытой</b> вкладки.
+			Нужна авторизация в Росдистанте в этом же браузере.
+		</p>
+	</section>
+
+	<details class="more">
+		<summary>Экспорт тестов</summary>
+		<div class="more-body">
+			<button id="btn-test-html" class="btn">💾 Сохранить тест в HTML</button>
+			<button id="btn-test-pdf" class="btn">🖨️ Сохранить тест в PDF</button>
+			<p class="hint">Откройте завершённую попытку теста и нажмите кнопку.</p>
+		</div>
+	</details>
+
+	<div id="status" class="status" role="status" aria-live="polite"></div>
+
+	<footer class="ftr">
+		Использует вашу активную сессию. Скачивайте только материалы, к которым у вас есть доступ.
+	</footer>
+
+	<script src="popup.js"></script>
+</body>
+</html>

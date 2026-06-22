@@ -1,0 +1,14 @@
+{
+	"name": "rosdistant-helper",
+	"version": "1.0.0",
+	"description": "Помощь росдистантикам — браузерное расширение для скачивания учебников и сохранения тестов с платформы Росдистант в один клик.",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"build": "node scripts/build.mjs",
+		"zip": "node scripts/build.mjs && node scripts/pack.mjs"
+	},
+	"license": "MIT",
+	"author": "opiums9, sglazunov",
+	"homepage": "https://github.com/opiums9/rosdistant_export_test"
+}

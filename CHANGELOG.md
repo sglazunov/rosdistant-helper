@@ -1,0 +1,24 @@
+# Changelog
+
+## 1.0.0 — 2026-06-23
+
+Первый релиз «Помощь росдистантикам / Rosdistant Helper».
+
+### Добавлено
+- **Скачивание учебников в один клик** с платформы Росдистант:
+  - по вставленной ссылке (расширение само открывает её в активной сессии);
+  - с текущей открытой страницы учебника.
+- Автоматическое извлечение `fileOpenParams.filePath` из просмотрщика iSpring и
+  загрузка исходного файла через `downloads` API с сессионными cookie.
+- Запасной режим: сборка изображений страниц в печатный PDF.
+- Перенос экспорта тестов из `opiums9/rosdistant_export_test`:
+  сохранение теста в HTML и в PDF.
+- Новый интерфейс попапа на русском языке.
+
+### Совместимость
+- Chrome, Yandex, Edge, Opera (MV3, `service_worker`).
+- Firefox (MV3, `background.scripts` + `browser_specific_settings`).
+- Safari (через официальный конвертер Apple, сборка на macOS).
+
+### Сборка
+- Zero-dependency скрипты `scripts/build.mjs` и `scripts/pack.mjs` на Node.js.
