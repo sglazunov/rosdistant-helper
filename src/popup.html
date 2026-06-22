@@ -8,39 +8,80 @@
 	<link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-	<header class="hdr">
-		<img src="icons/48.png" alt="" width="28" height="28" />
-		<div>
-			<div class="hdr-title">Помощь росдистантикам</div>
-			<div class="hdr-sub">Rosdistant Helper</div>
+	<div class="app">
+		<header class="hdr">
+			<div class="logo">
+				<img src="icons/48.png" alt="" width="22" height="22" />
+			</div>
+			<div class="hdr-text">
+				<h1 class="hdr-title">Помощь росдистантикам</h1>
+				<p class="hdr-sub">Скачивание учебников · Rosdistant Helper</p>
+			</div>
+		</header>
+
+		<main class="card">
+			<label class="field-label" for="url">Ссылка на учебник</label>
+			<div class="field">
+				<svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+					<path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+				</svg>
+				<input id="url" class="input" type="url" inputmode="url" autocomplete="off"
+					placeholder="Вставьте ссылку Росдистанта…" />
+			</div>
+
+			<button id="btn-book" class="btn btn-primary">
+				<span class="btn-spinner" aria-hidden="true"></span>
+				<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M12 3v12" />
+					<path d="m7 11 5 5 5-5" />
+					<path d="M5 21h14" />
+				</svg>
+				<span class="btn-label">Скачать учебник</span>
+			</button>
+
+			<p class="hint">
+				Пусто — скачать с <b>текущей</b> вкладки. Нужна авторизация в Росдистанте
+				в этом браузере.
+			</p>
+		</main>
+
+		<div id="status" class="status" role="status" aria-live="polite" hidden>
+			<span class="status-dot" aria-hidden="true"></span>
+			<span class="status-text"></span>
 		</div>
-	</header>
 
-	<section class="card">
-		<label class="lbl" for="url">Ссылка на учебник или страницу Росдистанта</label>
-		<input id="url" class="inp" type="url" inputmode="url" autocomplete="off"
-			placeholder="https://edu.rosdistant.ru/… (необязательно)" />
-		<button id="btn-book" class="btn btn-primary">⬇️ Скачать учебник</button>
-		<p class="hint">
-			Оставьте поле пустым, чтобы скачать учебник с <b>текущей открытой</b> вкладки.
-			Нужна авторизация в Росдистанте в этом же браузере.
-		</p>
-	</section>
+		<section class="extras">
+			<button class="extras-toggle" id="extras-toggle" aria-expanded="false">
+				<svg class="extras-chevron" viewBox="0 0 24 24" aria-hidden="true">
+					<path d="m9 18 6-6-6-6" />
+				</svg>
+				<span>Экспорт тестов</span>
+			</button>
+			<div class="extras-body" id="extras-body" hidden>
+				<button id="btn-test-html" class="btn btn-ghost">
+					<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M14 3v5h5" />
+						<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+					</svg>
+					<span class="btn-label">Сохранить тест в HTML</span>
+				</button>
+				<button id="btn-test-pdf" class="btn btn-ghost">
+					<svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M6 9V2h12v7" />
+						<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+						<path d="M6 14h12v8H6z" />
+					</svg>
+					<span class="btn-label">Сохранить тест в PDF</span>
+				</button>
+				<p class="hint">Откройте завершённую попытку теста и нажмите кнопку.</p>
+			</div>
+		</section>
 
-	<details class="more">
-		<summary>Экспорт тестов</summary>
-		<div class="more-body">
-			<button id="btn-test-html" class="btn">💾 Сохранить тест в HTML</button>
-			<button id="btn-test-pdf" class="btn">🖨️ Сохранить тест в PDF</button>
-			<p class="hint">Откройте завершённую попытку теста и нажмите кнопку.</p>
-		</div>
-	</details>
-
-	<div id="status" class="status" role="status" aria-live="polite"></div>
-
-	<footer class="ftr">
-		Использует вашу активную сессию. Скачивайте только материалы, к которым у вас есть доступ.
-	</footer>
+		<footer class="ftr">
+			Работает через вашу сессию. Скачивайте только доступные вам материалы.
+		</footer>
+	</div>
 
 	<script src="popup.js"></script>
 </body>
