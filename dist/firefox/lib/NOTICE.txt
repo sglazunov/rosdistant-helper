@@ -1,0 +1,2 @@
+qpdf compiled to WebAssembly by @jspawn/qpdf-wasm (https://github.com/jsscheller/qpdf-wasm).
+qpdf © Jay Berkenbilt, licensed Apache-2.0. See qpdf-LICENSE.txt.

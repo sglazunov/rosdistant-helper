@@ -276,6 +276,93 @@ async function getActiveTabId() {
 	});
 }
 
+function injectFilesAllFrames(tabId, files) {
+	return new Promise((resolve, reject) => {
+		api.scripting.executeScript({ target: { tabId, allFrames: true }, files }, (results) => {
+			const err = api.runtime.lastError;
+			if (err) return reject(new Error(err.message));
+			resolve(results || []);
+		});
+	});
+}
+
+// Called inside each frame; delegates to the handler injected from rd-decrypt.js.
+function inj_callRunner(wasmUrl) {
+	if (typeof globalThis.__rdDownloadBook !== "function") return { skip: true, noRunner: true };
+	return globalThis.__rdDownloadBook(wasmUrl);
+}
+
+function mapRunnerResult(r, filenameHint) {
+	if (!r.ok) {
+		if (r.fetchFailed) {
+			return {
+				ok: false,
+				_fallbackFile: r.filePath || null,
+				_password: r.password || null,
+				message: "Не удалось загрузить файл из вкладки (" + (r.message || "ошибка") + ")."
+			};
+		}
+		return { ok: false, message: r.message || "Не удалось обработать учебник." };
+	}
+	if (r.mode === "images") {
+		return {
+			ok: true,
+			password: r.password || null,
+			message: "Прямой файл недоступен — открыт диалог печати (" + r.pages +
+				" стр.). Выберите «Сохранить как PDF»."
+		};
+	}
+	const name = r.filename || filenameHint || "учебник.pdf";
+	if (r.decrypted) {
+		return {
+			ok: true,
+			password: null,
+			message: "Готово! Учебник «" + name + "» скачан и разблокирован — " +
+				"пароль вводить не нужно, файл можно пересылать."
+		};
+	}
+	return {
+		ok: true,
+		password: r.password || null,
+		message: "Учебник «" + name + "» скачан, но снять пароль автоматически не удалось — " +
+			"введите его при открытии."
+	};
+}
+
+// Last-resort path: download the raw (possibly encrypted) file via the
+// downloads API and surface the password, used if the in-frame qpdf flow
+// could not run (e.g. the page blocked script injection).
+async function fallbackDownload(tabId, filePathHint, passwordHint) {
+	if (filePathHint) {
+		const filename = sanitizeFilename("rosdistant-book") + extOf(filePathHint);
+		await downloadUrl(filePathHint, filename);
+		return {
+			ok: true,
+			password: passwordHint || null,
+			message: "Учебник скачивается. " +
+				(passwordHint ? "Снять пароль не получилось — введите его при открытии." : "")
+		};
+	}
+	const book = await extractWithRetries(tabId, 3);
+	if (!book.ok) return { ok: false, message: book.message };
+	if (book.type === "file" && book.filePath) {
+		const filename = sanitizeFilename(book.title) + extOf(book.filePath);
+		await downloadUrl(book.filePath, filename);
+		return {
+			ok: true,
+			password: book.password || null,
+			message: "Учебник скачивается: «" + filename + "»." +
+				(book.password ? " Введите пароль при открытии." : "")
+		};
+	}
+	if (book.type === "images" && book.images.length) {
+		await execInTab(tabId, inj_printImages, [book.images, book.title]);
+		return { ok: true, password: book.password || null,
+			message: "Открыт диалог печати (" + book.images.length + " стр.) — «Сохранить как PDF»." };
+	}
+	return { ok: false, message: book.message || "Учебник не найден." };
+}
+
 async function downloadBook({ url }) {
 	let tabId;
 	let openedTab = false;
@@ -292,38 +379,34 @@ async function downloadBook({ url }) {
 	}
 
 	try {
-		const book = await extractWithRetries(tabId, openedTab ? 8 : 3);
-		if (!book.ok) return { ok: false, message: book.message };
+		const wasmUrl = api.runtime.getURL("lib/qpdf.wasm");
+		let injected = false;
+		try {
+			await injectFilesAllFrames(tabId, ["lib/qpdf.js", "lib/rd-decrypt.js"]);
+			injected = true;
+		} catch (_) { /* restricted page — fall back below */ }
 
-		if (book.type === "file" && book.filePath) {
-			const filename = sanitizeFilename(book.title) + extOf(book.filePath);
-			await downloadUrl(book.filePath, filename);
-			const note = book.password
-				? ' Файл защищён паролем — введите его при открытии.'
-				: '';
-			return {
-				ok: true,
-				password: book.password || null,
-				message: 'Учебник скачивается: «' + filename + '».' + note
-			};
+		if (injected) {
+			const attempts = openedTab ? 10 : 4;
+			for (let i = 0; i < attempts; i++) {
+				let results = [];
+				try { results = await execInTab(tabId, inj_callRunner, [wasmUrl]); } catch (_) {}
+				const acted = results.find((r) => r && r.result && !r.result.skip);
+				if (acted) {
+					const mapped = mapRunnerResult(acted.result);
+					if (mapped.ok || !mapped._fallbackFile) return mapped;
+					return await fallbackDownload(tabId, mapped._fallbackFile, mapped._password);
+				}
+				await sleep(1200);
+			}
 		}
 
-		if (book.type === "images" && book.images.length) {
-			// Fallback runs in the page that already has the images loaded.
-			await execInTab(tabId, inj_printImages, [book.images, book.title]);
-			return {
-				ok: true,
-				password: book.password || null,
-				message: "Прямой файл недоступен. Открыт диалог печати — выберите " +
-					'"Сохранить как PDF" (' + book.images.length + " стр.)."
-			};
-		}
-
-		return { ok: false, message: book.message || "Не удалось определить файл учебника." };
+		// qpdf flow never ran or never found the book — try the simple path.
+		return await fallbackDownload(tabId, null, null);
 	} finally {
 		if (openedTab && tabId) {
-			// give the download a moment to register before closing the tab
-			setTimeout(() => api.tabs.remove(tabId, () => void api.runtime.lastError), 2500);
+			// keep the tab long enough for the in-page download to start
+			setTimeout(() => api.tabs.remove(tabId, () => void api.runtime.lastError), 4000);
 		}
 	}
 }
