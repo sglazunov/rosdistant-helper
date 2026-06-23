@@ -225,6 +225,72 @@ body {
 @keyframes pop { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
 @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
 
+/* ---------- Password reveal ---------- */
+.pass {
+	margin-top: 12px;
+	padding: 12px;
+	border-radius: var(--r-md);
+	background: var(--surface);
+	border: 1.5px solid var(--brand);
+	box-shadow: 0 0 0 4px var(--ring);
+	animation: pop .18s ease;
+}
+.pass-head {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font-size: 12px;
+	font-weight: 700;
+	color: var(--brand);
+	margin-bottom: 8px;
+}
+.pass-icon {
+	width: 16px; height: 16px;
+	fill: none; stroke: currentColor;
+	stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.pass-row { display: flex; gap: 8px; align-items: stretch; }
+.pass-value {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	padding: 9px 12px;
+	border-radius: var(--r-sm);
+	background: var(--surface-2);
+	border: 1px solid var(--border);
+	font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--fg);
+	word-break: break-all;
+	user-select: all;
+}
+.pass-copy {
+	flex: none;
+	width: 40px;
+	display: grid;
+	place-items: center;
+	border-radius: var(--r-sm);
+	border: none;
+	color: #fff;
+	background: linear-gradient(135deg, var(--brand), var(--brand-2));
+	cursor: pointer;
+	transition: transform .08s, filter .15s;
+}
+.pass-copy:hover { filter: brightness(1.06); }
+.pass-copy:active { transform: scale(0.94); }
+.pass-copy.copied { background: var(--ok); }
+.pass-copy svg {
+	width: 17px; height: 17px;
+	fill: none; stroke: currentColor;
+	stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.pass-hint {
+	margin: 8px 0 0;
+	font-size: 11px;
+	color: var(--muted);
+}
+
 /* ---------- Extras (collapsible) ---------- */
 .extras {
 	margin-top: 14px;

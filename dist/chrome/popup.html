@@ -51,6 +51,26 @@
 			<span class="status-text"></span>
 		</div>
 
+		<div id="pass" class="pass" hidden>
+			<div class="pass-head">
+				<svg class="pass-icon" viewBox="0 0 24 24" aria-hidden="true">
+					<rect x="3" y="11" width="18" height="11" rx="2" />
+					<path d="M7 11V7a5 5 0 0 1 10 0v4" />
+				</svg>
+				<span>Пароль от PDF</span>
+			</div>
+			<div class="pass-row">
+				<code id="pass-value" class="pass-value"></code>
+				<button id="pass-copy" class="pass-copy" type="button" aria-label="Скопировать пароль">
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<rect x="9" y="9" width="13" height="13" rx="2" />
+						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+					</svg>
+				</button>
+			</div>
+			<p class="pass-hint">Введите его в окне «Необходимо ввести пароль».</p>
+		</div>
+
 		<section class="extras">
 			<button class="extras-toggle" id="extras-toggle" aria-expanded="false">
 				<svg class="extras-chevron" viewBox="0 0 24 24" aria-hidden="true">

@@ -28,6 +28,7 @@ function inj_extractBook() {
 		title: document.title || "rosdistant-book",
 		filePath: null,
 		images: [],
+		password: null,
 		message: ""
 	};
 
@@ -63,6 +64,22 @@ function inj_extractBook() {
 		.filter((src) => src && /\/(res|data|pages?|slides?)\//i.test(src));
 	result.images = Array.from(new Set(imgs))
 		.map((src) => new URL(src, location.href).href);
+
+	// The iSpring viewer stores the document password in localStorage under a
+	// key like "ispring::book/<PASSWORD>". Grab the most recently updated one —
+	// that is the password the PDF viewer asks for.
+	try {
+		let best = null;
+		for (let i = 0; i < localStorage.length; i++) {
+			const k = localStorage.key(i);
+			const km = k && k.match(/^ispring::book\/(.+)$/);
+			if (!km) continue;
+			let updated = 0;
+			try { updated = (JSON.parse(JSON.parse(localStorage.getItem(k))) || {}).updated || 0; } catch (_) {}
+			if (!best || updated > best.updated) best = { password: km[1], updated };
+		}
+		if (best && best.password) result.password = best.password;
+	} catch (_) {}
 
 	if (!result.ok && result.images.length) {
 		result.type = "images";
@@ -281,7 +298,14 @@ async function downloadBook({ url }) {
 		if (book.type === "file" && book.filePath) {
 			const filename = sanitizeFilename(book.title) + extOf(book.filePath);
 			await downloadUrl(book.filePath, filename);
-			return { ok: true, message: 'Учебник скачивается: «' + filename + '».' };
+			const note = book.password
+				? ' Файл защищён паролем — введите его при открытии.'
+				: '';
+			return {
+				ok: true,
+				password: book.password || null,
+				message: 'Учебник скачивается: «' + filename + '».' + note
+			};
 		}
 
 		if (book.type === "images" && book.images.length) {
@@ -289,6 +313,7 @@ async function downloadBook({ url }) {
 			await execInTab(tabId, inj_printImages, [book.images, book.title]);
 			return {
 				ok: true,
+				password: book.password || null,
 				message: "Прямой файл недоступен. Открыт диалог печати — выберите " +
 					'"Сохранить как PDF" (' + book.images.length + " стр.)."
 			};

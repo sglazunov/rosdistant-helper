@@ -31,13 +31,54 @@ function send(message) {
 	});
 }
 
+const passEl = $("pass");
+const passValue = $("pass-value");
+const passCopy = $("pass-copy");
+
+async function copyText(text) {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch (_) {
+		try {
+			passValue.focus();
+			const r = document.createRange();
+			r.selectNodeContents(passValue);
+			const sel = window.getSelection();
+			sel.removeAllRanges();
+			sel.addRange(r);
+			return document.execCommand("copy");
+		} catch (__) { return false; }
+	}
+}
+
+function showPassword(password) {
+	if (!password) { passEl.hidden = true; return; }
+	passValue.textContent = password;
+	passEl.hidden = false;
+	copyText(password).then((ok) => {
+		if (ok) {
+			passCopy.classList.add("copied");
+			setTimeout(() => passCopy.classList.remove("copied"), 1500);
+		}
+	});
+}
+
+passCopy.addEventListener("click", async () => {
+	const ok = await copyText(passValue.textContent);
+	passCopy.classList.toggle("copied", ok);
+	setTimeout(() => passCopy.classList.remove("copied"), 1500);
+});
+
 async function run(btn, message, busyText) {
 	setBusy(btn, true);
 	setStatus(busyText, "busy");
+	passEl.hidden = true;
 	const resp = await send(message);
 	setBusy(btn, false);
 	setStatus(resp.message || (resp.ok ? "Готово." : "Не удалось выполнить."),
 		resp.ok ? "ok" : "err");
+	showPassword(resp.password);
 }
 
 $("btn-book").addEventListener("click", (e) => {
