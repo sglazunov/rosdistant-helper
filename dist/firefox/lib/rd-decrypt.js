@@ -26,6 +26,32 @@
 			.slice(0, 120) || "rosdistant-book";
 	}
 
+	// iSpring stores the document password as part of a storage key, e.g.
+	// "ispring::book/<PASSWORD>". Scan both localStorage and sessionStorage with
+	// a couple of key shapes and return the most recently updated match.
+	function scanStore(store) {
+		let best = null;
+		try {
+			for (let i = 0; i < store.length; i++) {
+				const k = store.key(i);
+				if (!k) continue;
+				const km = k.match(/ispring::book\/(.+)$/) || k.match(/ispring.*book[\/:]+(.+)$/i);
+				if (!km) continue;
+				let u = 0;
+				try { u = (JSON.parse(JSON.parse(store.getItem(k))) || {}).updated || 0; } catch (_) {}
+				if (!best || u > best.u) best = { p: km[1], u };
+			}
+		} catch (_) {}
+		return best;
+	}
+
+	function findPassword() {
+		let best = null;
+		try { best = scanStore(window.localStorage); } catch (_) {}
+		if (!best) { try { best = scanStore(window.sessionStorage); } catch (_) {} }
+		return best && best.p ? best.p : null;
+	}
+
 	// Reads the iSpring descriptor + page images + stored password from this frame.
 	function extract() {
 		const out = {
@@ -56,18 +82,7 @@
 			.filter((s) => s && /\/(res|data|pages?|slides?)\//i.test(s));
 		out.images = Array.from(new Set(imgs)).map((s) => new URL(s, location.href).href);
 
-		try {
-			let best = null;
-			for (let i = 0; i < localStorage.length; i++) {
-				const k = localStorage.key(i);
-				const km = k && k.match(/^ispring::book\/(.+)$/);
-				if (!km) continue;
-				let u = 0;
-				try { u = (JSON.parse(JSON.parse(localStorage.getItem(k))) || {}).updated || 0; } catch (_) {}
-				if (!best || u > best.u) best = { p: km[1], u };
-			}
-			if (best && best.p) out.password = best.p;
-		} catch (_) {}
+		out.password = findPassword();
 
 		if (!out.ok && out.images.length) { out.type = "images"; out.ok = true; }
 		return out;

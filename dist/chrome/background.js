@@ -65,21 +65,26 @@ function inj_extractBook() {
 	result.images = Array.from(new Set(imgs))
 		.map((src) => new URL(src, location.href).href);
 
-	// The iSpring viewer stores the document password in localStorage under a
-	// key like "ispring::book/<PASSWORD>". Grab the most recently updated one —
-	// that is the password the PDF viewer asks for.
-	try {
+	// The iSpring viewer stores the document password as part of a storage key
+	// like "ispring::book/<PASSWORD>" — grab the most recently updated one from
+	// localStorage or sessionStorage.
+	function scanStore(store) {
 		let best = null;
-		for (let i = 0; i < localStorage.length; i++) {
-			const k = localStorage.key(i);
-			const km = k && k.match(/^ispring::book\/(.+)$/);
-			if (!km) continue;
-			let updated = 0;
-			try { updated = (JSON.parse(JSON.parse(localStorage.getItem(k))) || {}).updated || 0; } catch (_) {}
-			if (!best || updated > best.updated) best = { password: km[1], updated };
-		}
-		if (best && best.password) result.password = best.password;
-	} catch (_) {}
+		try {
+			for (let i = 0; i < store.length; i++) {
+				const k = store.key(i);
+				if (!k) continue;
+				const km = k.match(/ispring::book\/(.+)$/) || k.match(/ispring.*book[\/:]+(.+)$/i);
+				if (!km) continue;
+				let updated = 0;
+				try { updated = (JSON.parse(JSON.parse(store.getItem(k))) || {}).updated || 0; } catch (_) {}
+				if (!best || updated > best.updated) best = { password: km[1], updated };
+			}
+		} catch (_) {}
+		return best;
+	}
+	const pw = scanStore(localStorage) || scanStore(sessionStorage);
+	if (pw && pw.password) result.password = pw.password;
 
 	if (!result.ok && result.images.length) {
 		result.type = "images";
@@ -321,11 +326,19 @@ function mapRunnerResult(r, filenameHint) {
 				"пароль вводить не нужно, файл можно пересылать."
 		};
 	}
+	if (r.password) {
+		return {
+			ok: true,
+			password: r.password,
+			message: "Учебник «" + name + "» скачан, но снять пароль автоматически не удалось. " +
+				"Пароль — ниже (уже скопирован), вставьте его при открытии файла."
+		};
+	}
 	return {
 		ok: true,
-		password: r.password || null,
-		message: "Учебник «" + name + "» скачан, но снять пароль автоматически не удалось — " +
-			"введите его при открытии."
+		password: null,
+		message: "Учебник «" + name + "» скачан, но он защищён паролем, а сам пароль " +
+			"не найден. Откройте учебник в просмотрщике один раз и повторите."
 	};
 }
 
