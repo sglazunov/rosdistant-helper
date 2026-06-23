@@ -1,34 +1,21 @@
 /*
- * In-frame book handler — injected into Rosdistant pages.
+ * In-frame book handler — injected into Rosdistant pages together with
+ * pdf.min.js (sets `pdfjsLib`) and jspdf.umd.min.js (sets `jspdf`).
  *
  * Runs inside the frame that hosts the iSpring viewer, so it has the frame's
- * cookies (for fetching the file), its localStorage (for the password) and its
- * DOM (for triggering the download). Exposes globalThis.__rdDownloadBook.
+ * cookies (to fetch the file), its localStorage (the password) and its DOM
+ * (canvas + download). Exposes globalThis.__rdDownloadBook.
  *
- * Flow: read fileOpenParams + password -> fetch the PDF with the session ->
- * ask the background worker to strip the password with qpdf (decryption runs in
- * the extension context, immune to the page's CSP) -> save the UNLOCKED copy,
- * which opens without a password and can be forwarded freely.
+ * Why pdf.js instead of qpdf: Rosdistant textbooks are password-protected PDFs
+ * that iSpring writes off-spec on purpose (image streams declare `/Length 0`),
+ * so strict tools like qpdf abort with "expected endstream". pdf.js — the same
+ * engine browsers use to display them — opens them leniently. We decrypt with
+ * the password, render every page, and rebuild a normal, UNLOCKED PDF that
+ * opens without a password and can be forwarded freely.
  */
 (() => {
-	const isPdf = (b) =>
-		b && b.length > 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
-
-	// Compact, JSON-safe transport for binary across runtime messaging.
-	function bytesToB64(bytes) {
-		let bin = "";
-		const chunk = 0x8000;
-		for (let i = 0; i < bytes.length; i += chunk) {
-			bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-		}
-		return btoa(bin);
-	}
-	function b64ToBytes(b64) {
-		const bin = atob(b64);
-		const out = new Uint8Array(bin.length);
-		for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-		return out;
-	}
+	const PDFJS = (typeof pdfjsLib !== "undefined") ? pdfjsLib : (globalThis.pdfjsLib || null);
+	const JSPDF = (typeof jspdf !== "undefined") ? jspdf : (globalThis.jspdf || null);
 
 	function sanitize(name) {
 		return (name || "rosdistant-book")
@@ -39,9 +26,6 @@
 			.slice(0, 120) || "rosdistant-book";
 	}
 
-	// iSpring stores the document password as part of a storage key, e.g.
-	// "ispring::book/<PASSWORD>". Scan both localStorage and sessionStorage with
-	// a couple of key shapes and return the most recently updated match.
 	function scanStore(store) {
 		let best = null;
 		try {
@@ -57,7 +41,6 @@
 		} catch (_) {}
 		return best;
 	}
-
 	function findPassword() {
 		let best = null;
 		try { best = scanStore(window.localStorage); } catch (_) {}
@@ -65,7 +48,6 @@
 		return best && best.p ? best.p : null;
 	}
 
-	// Reads the iSpring descriptor + page images + stored password from this frame.
 	function extract() {
 		const out = {
 			ok: false, type: "none",
@@ -89,14 +71,11 @@
 				}
 			} catch (_) {}
 		}
-
 		const imgs = Array.from(document.images)
 			.map((i) => i.currentSrc || i.src)
 			.filter((s) => s && /\/(res|data|pages?|slides?)\//i.test(s));
 		out.images = Array.from(new Set(imgs)).map((s) => new URL(s, location.href).href);
-
 		out.password = findPassword();
-
 		if (!out.ok && out.images.length) { out.type = "images"; out.ok = true; }
 		return out;
 	}
@@ -111,28 +90,65 @@
 		document.body.appendChild(a);
 		a.click();
 		a.remove();
-		setTimeout(() => URL.revokeObjectURL(url), 15000);
+		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	}
 
-	// Asks the background worker to remove the password. Returns unlocked bytes
-	// (Uint8Array) or null. Decryption runs in the extension context, so it is
-	// not affected by the page's Content-Security-Policy.
-	function requestDecrypt(bytes, password) {
-		return new Promise((resolve) => {
-			let done = false;
-			const finish = (v) => { if (!done) { done = true; resolve(v); } };
-			try {
-				chrome.runtime.sendMessage(
-					{ type: "DECRYPT_PDF", b64: bytesToB64(bytes), password },
-					(resp) => {
-						if (chrome.runtime.lastError) return finish(null);
-						finish(resp && resp.ok && resp.b64 ? b64ToBytes(resp.b64) : null);
-					}
-				);
-			} catch (_) { finish(null); }
-			// safety timeout in case the worker never answers
-			setTimeout(() => finish(null), 60000);
-		});
+	function reportProgress(done, total) {
+		try { chrome.runtime.sendMessage({ type: "PROGRESS", done, total }); } catch (_) {}
+	}
+
+	let workerReady = false;
+	async function ensureWorker(workerUrl) {
+		if (workerReady || !PDFJS) return;
+		try {
+			// Load the worker from a same-origin blob so the page can spawn it
+			// (a chrome-extension:// worker would be cross-origin to the page).
+			const code = await (await fetch(workerUrl)).text();
+			const blobUrl = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+			PDFJS.GlobalWorkerOptions.workerSrc = blobUrl;
+			workerReady = true;
+		} catch (_) {
+			// fall back to main-thread rendering
+			try { PDFJS.GlobalWorkerOptions.workerSrc = ""; } catch (__) {}
+		}
+	}
+
+	// Decrypts with pdf.js and rebuilds an unlocked image-based PDF. Returns the
+	// new PDF bytes (Uint8Array), or null if it couldn't be done.
+	async function rebuildUnlocked(bytes, password, workerUrl) {
+		if (!PDFJS || !JSPDF || !JSPDF.jsPDF) return null;
+		await ensureWorker(workerUrl);
+		let doc;
+		try {
+			doc = await PDFJS.getDocument({ data: bytes, password: password || undefined }).promise;
+		} catch (_) { return null; }
+
+		const N = doc.numPages;
+		let out = null;
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+		try {
+			for (let i = 1; i <= N; i++) {
+				const page = await doc.getPage(i);
+				const vp = page.getViewport({ scale: 2 });
+				canvas.width = Math.ceil(vp.width);
+				canvas.height = Math.ceil(vp.height);
+				await page.render({ canvasContext: ctx, viewport: vp }).promise;
+				const jpg = canvas.toDataURL("image/jpeg", 0.82);
+				const wpt = (vp.width * 72) / 96;
+				const hpt = (vp.height * 72) / 96;
+				const orient = wpt > hpt ? "landscape" : "portrait";
+				if (i === 1) out = new JSPDF.jsPDF({ unit: "pt", format: [wpt, hpt], orientation: orient });
+				else out.addPage([wpt, hpt], orient);
+				out.addImage(jpg, "JPEG", 0, 0, wpt, hpt);
+				page.cleanup();
+				reportProgress(i, N);
+			}
+		} catch (_) {
+			if (!out) return null; // nothing usable
+		}
+		canvas.width = canvas.height = 0;
+		try { return new Uint8Array(out.output("arraybuffer")); } catch (_) { return null; }
 	}
 
 	function printImages(images, title) {
@@ -152,7 +168,10 @@
 		}, 400);
 	}
 
-	globalThis.__rdDownloadBook = async function () {
+	const isPdf = (b) =>
+		b && b.length > 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
+
+	globalThis.__rdDownloadBook = async function (workerUrl) {
 		const info = extract();
 		if (!info.ok) return { skip: true };
 
@@ -175,18 +194,19 @@
 				filePath: info.filePath, password: info.password || null, message: e.message };
 		}
 
-		// strip the password in the background (immune to page CSP)
-		let decrypted = false;
-		if (info.password && isPdf(bytes)) {
-			const out = await requestDecrypt(bytes, info.password);
-			if (out && isPdf(out)) { bytes = out; decrypted = true; }
-		}
-
 		const filename = sanitize(info.title) + ".pdf";
+
+		// decrypt + rebuild as an unlocked PDF
+		try {
+			const rebuilt = await rebuildUnlocked(bytes.slice(), info.password, workerUrl);
+			if (rebuilt && isPdf(rebuilt)) {
+				saveBytes(rebuilt, filename, "application/pdf");
+				return { ok: true, mode: "file", decrypted: true, filename, password: null };
+			}
+		} catch (_) {}
+
+		// could not unlock — save the original and surface the password
 		saveBytes(bytes, filename, "application/pdf");
-		return {
-			ok: true, mode: "file", decrypted, filename,
-			password: decrypted ? null : (info.password || null)
-		};
+		return { ok: true, mode: "file", decrypted: false, filename, password: info.password || null };
 	};
 })();

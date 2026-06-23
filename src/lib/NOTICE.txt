@@ -1,2 +1,9 @@
-qpdf compiled to WebAssembly by @jspawn/qpdf-wasm (https://github.com/jsscheller/qpdf-wasm).
-qpdf © Jay Berkenbilt, licensed Apache-2.0. See qpdf-LICENSE.txt.
+Third-party libraries bundled in this extension:
+
+- pdf.js (pdf.min.js, pdf.worker.min.js) — © Mozilla, Apache-2.0.
+  https://github.com/mozilla/pdf.js
+- jsPDF (jspdf.umd.min.js) — © James Hall and contributors, MIT.
+  https://github.com/parallax/jsPDF
+
+Used to open password-protected Rosdistant textbooks (which iSpring writes
+off-spec so generic tools fail) and rebuild them as a normal, unlocked PDF.
