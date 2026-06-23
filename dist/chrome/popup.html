@@ -58,7 +58,9 @@
 					<path d="M7 11V7a5 5 0 0 1 10 0v4" />
 				</svg>
 				<span>Пароль от документа</span>
+				<button id="pass-forget" class="pass-forget" type="button" aria-label="Забыть пароль" title="Забыть пароль">✕</button>
 			</div>
+			<div id="pass-file" class="pass-file" hidden></div>
 			<div class="pass-row">
 				<code id="pass-value" class="pass-value" title="Нажмите, чтобы выделить"></code>
 				<button id="pass-copy" class="pass-copy" type="button" aria-label="Скопировать пароль">
@@ -68,7 +70,7 @@
 					</svg>
 				</button>
 			</div>
-			<p class="pass-hint">Автоматически разблокировать не удалось. Пароль скопирован — вставьте его в окне «Необходимо ввести пароль».</p>
+			<p id="pass-hint" class="pass-hint">Вставьте этот пароль в окне «Необходимо ввести пароль».</p>
 		</div>
 
 		<section class="extras">

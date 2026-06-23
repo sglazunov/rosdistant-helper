@@ -13,6 +13,61 @@
 const api = (typeof browser !== "undefined") ? browser : chrome;
 
 /* ----------------------------------------------------------------------- *
+ *  qpdf (WebAssembly) — runs in the extension context, NOT the page, so it
+ *  works even when the Rosdistant page blocks WASM via its CSP.
+ *
+ *  Chrome/Yandex (service worker): load qpdf.js with importScripts at startup
+ *  (importScripts is only allowed during initial evaluation of a SW).
+ *  Firefox (event page): qpdf.js is listed before background.js in the manifest,
+ *  so the Module factory is already a global — nothing to import.
+ * ----------------------------------------------------------------------- */
+if (typeof Module === "undefined" && typeof importScripts === "function") {
+	try { importScripts("./lib/qpdf.js"); } catch (e) { /* logged on first use */ }
+}
+const QPDF_FACTORY = (typeof Module !== "undefined") ? Module
+	: (typeof self !== "undefined" && self.Module) ? self.Module : null;
+
+let __wasmBinaryPromise = null;
+function getWasmBinary() {
+	if (!__wasmBinaryPromise) {
+		__wasmBinaryPromise = fetch(api.runtime.getURL("lib/qpdf.wasm"))
+			.then((r) => r.arrayBuffer());
+	}
+	return __wasmBinaryPromise;
+}
+
+// Removes the password from `bytes` (Uint8Array) using qpdf. Resolves to the
+// unlocked bytes, or null if decryption was not possible.
+async function decryptPdfBytes(bytes, password) {
+	if (!QPDF_FACTORY || !password) return null;
+	let wasmBinary;
+	try { wasmBinary = await getWasmBinary(); } catch (_) { return null; }
+	return new Promise((resolve) => {
+		QPDF_FACTORY({
+			noInitialRun: true,
+			print: () => {},
+			printErr: () => {},
+			instantiateWasm: (imports, cb) => {
+				WebAssembly.instantiate(wasmBinary, imports)
+					.then((o) => cb(o.instance, o.module))
+					.catch(() => cb(null));
+				return {};
+			}
+		}).then((m) => {
+			try {
+				m.FS.writeFile("in.pdf", bytes);
+				try { m.callMain(["--decrypt", "--password=" + password, "in.pdf", "out.pdf"]); } catch (_) {}
+				let out = null;
+				try { out = m.FS.readFile("out.pdf"); } catch (_) {}
+				const ok = out && out.length > 4 &&
+					out[0] === 0x25 && out[1] === 0x50 && out[2] === 0x44 && out[3] === 0x46;
+				resolve(ok ? out : null);
+			} catch (_) { resolve(null); }
+		}).catch(() => resolve(null));
+	});
+}
+
+/* ----------------------------------------------------------------------- *
  *  Injectable functions
  *  These are serialised and executed inside the Rosdistant page. They must
  *  be fully self-contained (no references to anything outside their body).
@@ -292,9 +347,9 @@ function injectFilesAllFrames(tabId, files) {
 }
 
 // Called inside each frame; delegates to the handler injected from rd-decrypt.js.
-function inj_callRunner(wasmUrl) {
+function inj_callRunner() {
 	if (typeof globalThis.__rdDownloadBook !== "function") return { skip: true, noRunner: true };
-	return globalThis.__rdDownloadBook(wasmUrl);
+	return globalThis.__rdDownloadBook();
 }
 
 function mapRunnerResult(r, filenameHint) {
@@ -313,6 +368,7 @@ function mapRunnerResult(r, filenameHint) {
 		return {
 			ok: true,
 			password: r.password || null,
+			filename: null,
 			message: "Прямой файл недоступен — открыт диалог печати (" + r.pages +
 				" стр.). Выберите «Сохранить как PDF»."
 		};
@@ -322,6 +378,7 @@ function mapRunnerResult(r, filenameHint) {
 		return {
 			ok: true,
 			password: null,
+			filename: name,
 			message: "Готово! Учебник «" + name + "» скачан и разблокирован — " +
 				"пароль вводить не нужно, файл можно пересылать."
 		};
@@ -330,6 +387,7 @@ function mapRunnerResult(r, filenameHint) {
 		return {
 			ok: true,
 			password: r.password,
+			filename: name,
 			message: "Учебник «" + name + "» скачан, но снять пароль автоматически не удалось. " +
 				"Пароль — ниже (уже скопирован), вставьте его при открытии файла."
 		};
@@ -337,6 +395,7 @@ function mapRunnerResult(r, filenameHint) {
 	return {
 		ok: true,
 		password: null,
+		filename: name,
 		message: "Учебник «" + name + "» скачан, но он защищён паролем, а сам пароль " +
 			"не найден. Откройте учебник в просмотрщике один раз и повторите."
 	};
@@ -392,10 +451,9 @@ async function downloadBook({ url }) {
 	}
 
 	try {
-		const wasmUrl = api.runtime.getURL("lib/qpdf.wasm");
 		let injected = false;
 		try {
-			await injectFilesAllFrames(tabId, ["lib/qpdf.js", "lib/rd-decrypt.js"]);
+			await injectFilesAllFrames(tabId, ["lib/rd-decrypt.js"]);
 			injected = true;
 		} catch (_) { /* restricted page — fall back below */ }
 
@@ -403,7 +461,7 @@ async function downloadBook({ url }) {
 			const attempts = openedTab ? 10 : 4;
 			for (let i = 0; i < attempts; i++) {
 				let results = [];
-				try { results = await execInTab(tabId, inj_callRunner, [wasmUrl]); } catch (_) {}
+				try { results = await execInTab(tabId, inj_callRunner); } catch (_) {}
 				const acted = results.find((r) => r && r.result && !r.result.skip);
 				if (acted) {
 					const mapped = mapRunnerResult(acted.result);
@@ -436,12 +494,60 @@ async function runOnActiveTab(func, args) {
  *  Message router (from popup.js)
  * ----------------------------------------------------------------------- */
 
+function b64ToBytes(b64) {
+	const bin = atob(b64);
+	const out = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+	return out;
+}
+function bytesToB64(bytes) {
+	let bin = "";
+	const chunk = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunk) {
+		bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+	}
+	return btoa(bin);
+}
+
+// Remembers the password of the most recently downloaded textbook so the popup
+// can show it again even after it was closed and reopened.
+function rememberLastBook(resp) {
+	try {
+		if (!resp || !resp.ok) return;
+		if (resp.password) {
+			api.storage.local.set({
+				lastBook: {
+					password: resp.password,
+					filename: resp.filename || null,
+					ts: Date.now()
+				}
+			});
+		}
+		// note: a successfully decrypted book has no password to remember; we keep
+		// the previous entry untouched rather than clearing it.
+	} catch (_) {}
+}
+
 api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 	(async () => {
 		try {
 			switch (msg && msg.type) {
-				case "DOWNLOAD_BOOK":
-					sendResponse(await downloadBook({ url: msg.url }));
+				case "DOWNLOAD_BOOK": {
+					const resp = await downloadBook({ url: msg.url });
+					rememberLastBook(resp);
+					sendResponse(resp);
+					break;
+				}
+				case "DECRYPT_PDF": {
+					const out = await decryptPdfBytes(b64ToBytes(msg.b64), msg.password);
+					sendResponse(out ? { ok: true, b64: bytesToB64(out) } : { ok: false });
+					break;
+				}
+				case "GET_LAST_BOOK":
+					api.storage.local.get("lastBook", (d) => sendResponse((d && d.lastBook) || null));
+					break;
+				case "FORGET_LAST_BOOK":
+					api.storage.local.remove("lastBook", () => sendResponse({ ok: true }));
 					break;
 				case "EXPORT_TEST_HTML":
 					sendResponse(await runOnActiveTab(inj_exportTestHtml));

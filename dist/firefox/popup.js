@@ -34,6 +34,9 @@ function send(message) {
 const passEl = $("pass");
 const passValue = $("pass-value");
 const passCopy = $("pass-copy");
+const passFile = $("pass-file");
+const passHint = $("pass-hint");
+const passForget = $("pass-forget");
 
 async function copyText(text) {
 	try {
@@ -52,22 +55,49 @@ async function copyText(text) {
 	}
 }
 
-function showPassword(password) {
+// opts: { filename, remembered, autocopy }
+function showPassword(password, opts) {
+	opts = opts || {};
 	if (!password) { passEl.hidden = true; return; }
 	passValue.textContent = password;
 	passEl.hidden = false;
-	copyText(password).then((ok) => {
-		if (ok) {
-			passCopy.classList.add("copied");
-			setTimeout(() => passCopy.classList.remove("copied"), 1500);
-		}
-	});
+
+	if (opts.filename) {
+		passFile.textContent = "Учебник: " + opts.filename;
+		passFile.hidden = false;
+	} else {
+		passFile.hidden = true;
+	}
+	passHint.textContent = opts.remembered
+		? "Пароль от последнего скачанного учебника. Вставьте его в окне «Необходимо ввести пароль»."
+		: "Вставьте этот пароль в окне «Необходимо ввести пароль».";
+
+	if (opts.autocopy !== false) {
+		copyText(password).then((ok) => {
+			if (ok) {
+				passCopy.classList.add("copied");
+				setTimeout(() => passCopy.classList.remove("copied"), 1500);
+			}
+		});
+	}
 }
 
 passCopy.addEventListener("click", async () => {
 	const ok = await copyText(passValue.textContent);
 	passCopy.classList.toggle("copied", ok);
 	setTimeout(() => passCopy.classList.remove("copied"), 1500);
+});
+
+passForget.addEventListener("click", () => {
+	send({ type: "FORGET_LAST_BOOK" });
+	passEl.hidden = true;
+});
+
+// On open, restore the password of the last downloaded textbook (if any).
+send({ type: "GET_LAST_BOOK" }).then((last) => {
+	if (last && last.password) {
+		showPassword(last.password, { filename: last.filename, remembered: true, autocopy: false });
+	}
 });
 
 async function run(btn, message, busyText) {
@@ -78,7 +108,7 @@ async function run(btn, message, busyText) {
 	setBusy(btn, false);
 	setStatus(resp.message || (resp.ok ? "Готово." : "Не удалось выполнить."),
 		resp.ok ? "ok" : "err");
-	showPassword(resp.password);
+	showPassword(resp.password, { filename: resp.filename, remembered: false, autocopy: true });
 }
 
 $("btn-book").addEventListener("click", (e) => {

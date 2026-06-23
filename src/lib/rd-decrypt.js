@@ -1,21 +1,34 @@
 /*
- * In-frame book handler — injected into Rosdistant pages alongside qpdf.js.
+ * In-frame book handler — injected into Rosdistant pages.
  *
- * Runs inside the frame that actually hosts the iSpring viewer, so it has the
- * frame's cookies (for fetching the file), its localStorage (for the password)
- * and its DOM (for triggering the download). Exposes globalThis.__rdDownloadBook
- * which the background worker calls.
+ * Runs inside the frame that hosts the iSpring viewer, so it has the frame's
+ * cookies (for fetching the file), its localStorage (for the password) and its
+ * DOM (for triggering the download). Exposes globalThis.__rdDownloadBook.
  *
  * Flow: read fileOpenParams + password -> fetch the PDF with the session ->
- * decrypt it with qpdf-wasm using that password -> save an UNLOCKED copy that
- * opens without any password and can be forwarded freely.
+ * ask the background worker to strip the password with qpdf (decryption runs in
+ * the extension context, immune to the page's CSP) -> save the UNLOCKED copy,
+ * which opens without a password and can be forwarded freely.
  */
 (() => {
-	// qpdf.js (injected just before this file) declares a global `Module` factory.
-	const QPDF = (typeof Module !== "undefined") ? Module : (globalThis.Module || null);
-
 	const isPdf = (b) =>
 		b && b.length > 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
+
+	// Compact, JSON-safe transport for binary across runtime messaging.
+	function bytesToB64(bytes) {
+		let bin = "";
+		const chunk = 0x8000;
+		for (let i = 0; i < bytes.length; i += chunk) {
+			bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+		}
+		return btoa(bin);
+	}
+	function b64ToBytes(b64) {
+		const bin = atob(b64);
+		const out = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+		return out;
+	}
 
 	function sanitize(name) {
 		return (name || "rosdistant-book")
@@ -101,31 +114,24 @@
 		setTimeout(() => URL.revokeObjectURL(url), 15000);
 	}
 
-	// Removes the password from `input` using qpdf-wasm. Returns the unlocked
-	// bytes, or null if decryption was not possible.
-	function qpdfDecrypt(wasmBinary, input, password) {
+	// Asks the background worker to remove the password. Returns unlocked bytes
+	// (Uint8Array) or null. Decryption runs in the extension context, so it is
+	// not affected by the page's Content-Security-Policy.
+	function requestDecrypt(bytes, password) {
 		return new Promise((resolve) => {
-			if (!QPDF) return resolve(null);
-			const opts = {
-				noInitialRun: true,
-				print: () => {},
-				printErr: () => {},
-				instantiateWasm: (imports, cb) => {
-					WebAssembly.instantiate(wasmBinary, imports)
-						.then((o) => cb(o.instance, o.module))
-						.catch(() => cb(null));
-					return {};
-				}
-			};
-			Promise.resolve().then(() => QPDF(opts)).then((m) => {
-				try {
-					m.FS.writeFile("in.pdf", input);
-					try { m.callMain(["--decrypt", "--password=" + password, "in.pdf", "out.pdf"]); } catch (_) {}
-					let o = null;
-					try { o = m.FS.readFile("out.pdf"); } catch (_) {}
-					resolve(o);
-				} catch (_) { resolve(null); }
-			}).catch(() => resolve(null));
+			let done = false;
+			const finish = (v) => { if (!done) { done = true; resolve(v); } };
+			try {
+				chrome.runtime.sendMessage(
+					{ type: "DECRYPT_PDF", b64: bytesToB64(bytes), password },
+					(resp) => {
+						if (chrome.runtime.lastError) return finish(null);
+						finish(resp && resp.ok && resp.b64 ? b64ToBytes(resp.b64) : null);
+					}
+				);
+			} catch (_) { finish(null); }
+			// safety timeout in case the worker never answers
+			setTimeout(() => finish(null), 60000);
 		});
 	}
 
@@ -146,7 +152,7 @@
 		}, 400);
 	}
 
-	globalThis.__rdDownloadBook = async function (wasmUrl) {
+	globalThis.__rdDownloadBook = async function () {
 		const info = extract();
 		if (!info.ok) return { skip: true };
 
@@ -158,7 +164,7 @@
 			} catch (e) { return { ok: false, message: e.message }; }
 		}
 
-		// file mode
+		// file mode — fetch with the page session (cookies)
 		let bytes;
 		try {
 			const r = await fetch(info.filePath, { credentials: "include" });
@@ -169,13 +175,11 @@
 				filePath: info.filePath, password: info.password || null, message: e.message };
 		}
 
+		// strip the password in the background (immune to page CSP)
 		let decrypted = false;
 		if (info.password && isPdf(bytes)) {
-			try {
-				const wb = await (await fetch(wasmUrl)).arrayBuffer();
-				const out = await qpdfDecrypt(wb, bytes, info.password);
-				if (out && isPdf(out)) { bytes = out; decrypted = true; }
-			} catch (_) {}
+			const out = await requestDecrypt(bytes, info.password);
+			if (out && isPdf(out)) { bytes = out; decrypted = true; }
 		}
 
 		const filename = sanitize(info.title) + ".pdf";

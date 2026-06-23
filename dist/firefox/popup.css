@@ -244,6 +244,27 @@ body {
 	color: var(--brand);
 	margin-bottom: 8px;
 }
+.pass-forget {
+	margin-left: auto;
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted);
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+}
+.pass-forget:hover { background: var(--surface-2); color: var(--err); }
+.pass-file {
+	font-size: 11px;
+	color: var(--muted);
+	margin-bottom: 8px;
+	word-break: break-all;
+}
 .pass-icon {
 	width: 16px; height: 16px;
 	fill: none; stroke: currentColor;
