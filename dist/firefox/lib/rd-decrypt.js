@@ -219,42 +219,51 @@
 		return { ok: true, title, slides };
 	}
 
-	function buildPresentationHtml(pres) {
-		const parts = [];
-		parts.push('<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>' +
-			escapeHtml(pres.title) + "</title><style>" +
-			"@page{margin:18mm}" +
-			'body{font:14px/1.6 Georgia,"Times New Roman",serif;color:#111}' +
-			"h1{font-size:22px;text-align:center;margin:0 0 6px}" +
-			".sub{text-align:center;color:#555;margin:0 0 28px;font-size:13px}" +
-			"h2{font-size:16px;color:#1a3a7a;border-bottom:1px solid #ccd;padding-bottom:4px;margin:26px 0 10px;page-break-after:avoid}" +
-			".slide{page-break-inside:avoid;margin-bottom:14px}" +
-			".num{color:#8a93a6}" +
-			"p{margin:0 0 8px;text-align:justify}" +
-			"</style></head><body>");
-		parts.push("<h1>" + escapeHtml(pres.title) + "</h1>");
-		parts.push('<div class="sub">' + escapeHtml(pres.slides.length + " слайдов · скачано расширением «Помощь росдистантикам»") + "</div>");
+	// Renders the presentation text into a real, downloadable PDF (selectable
+	// Cyrillic text) using jsPDF + a bundled Roboto subset. No print dialog.
+	function buildPresentationPdf(pres) {
+		const fonts = globalThis.__rdFonts;
+		const doc = new JSPDF.jsPDF({ unit: "pt", format: "a4", compress: true });
+		let family = "helvetica";
+		if (fonts && fonts.regular) {
+			doc.addFileToVFS("RdReg.ttf", fonts.regular);
+			doc.addFont("RdReg.ttf", "Rd", "normal");
+			if (fonts.bold) { doc.addFileToVFS("RdBold.ttf", fonts.bold); doc.addFont("RdBold.ttf", "Rd", "bold"); }
+			family = "Rd";
+		}
+		const W = doc.internal.pageSize.getWidth();
+		const H = doc.internal.pageSize.getHeight();
+		const M = 50;
+		const maxW = W - M * 2;
+		let y = M;
+
+		function need(h) { if (y + h > H - M) { doc.addPage(); y = M; } }
+		function write(text, { size, color, bold, gap, lh }) {
+			doc.setFont(family, bold ? "bold" : "normal");
+			doc.setFontSize(size);
+			doc.setTextColor(color[0], color[1], color[2]);
+			const lines = doc.splitTextToSize(text, maxW);
+			const step = size * (lh || 1.4);
+			for (const ln of lines) { need(step); doc.text(ln, M, y); y += step; }
+			y += (gap || 0);
+		}
+
+		// title block
+		write(pres.title, { size: 19, color: [17, 17, 17], bold: true, gap: 4, lh: 1.25 });
+		write(pres.slides.length + " слайдов · скачано расширением «Помощь росдистантикам»",
+			{ size: 10, color: [120, 120, 120], gap: 16, lh: 1.3 });
+
 		pres.slides.forEach((s, i) => {
-			parts.push('<div class="slide"><h2><span class="num">' + (i + 1) + ".</span> " + escapeHtml(s.title || "Слайд " + (i + 1)) + "</h2>");
+			need(40);
+			y += 8;
+			write((i + 1) + ".  " + (s.title || "Слайд " + (i + 1)),
+				{ size: 14, color: [26, 58, 122], bold: true, gap: 6, lh: 1.3 });
 			const text = s.notes || s.subtitle || "";
 			text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
-				.forEach((p) => parts.push("<p>" + escapeHtml(p).replace(/\n/g, "<br>") + "</p>"));
-			parts.push("</div>");
+				.forEach((p) => write(p.replace(/\n/g, " "), { size: 11, color: [25, 25, 25], gap: 7, lh: 1.45 }));
 		});
-		parts.push("</body></html>");
-		return parts.join("");
-	}
 
-	function printHtml(htmlDoc) {
-		const ifr = document.createElement("iframe");
-		ifr.style.cssText = "visibility:hidden;display:none;";
-		document.body.appendChild(ifr);
-		ifr.src = URL.createObjectURL(new Blob([htmlDoc], { type: "text/html" }));
-		ifr.onload = () => setTimeout(() => {
-			ifr.focus();
-			ifr.contentWindow.print();
-			setTimeout(() => ifr.remove(), 1500);
-		}, 400);
+		return new Uint8Array(doc.output("arraybuffer"));
 	}
 
 	globalThis.__rdDownloadBook = async function (workerUrl) {
@@ -263,8 +272,10 @@
 		try { pres = await extractPresentation(); } catch (_) { pres = { ok: false }; }
 		if (pres.ok) {
 			try {
-				printHtml(buildPresentationHtml(pres));
-				return { ok: true, mode: "presentation", slides: pres.slides.length, title: pres.title };
+				const pdf = buildPresentationPdf(pres);
+				saveBytes(pdf, sanitize(pres.title) + ".pdf", "application/pdf");
+				return { ok: true, mode: "presentation", slides: pres.slides.length,
+					filename: sanitize(pres.title) + ".pdf" };
 			} catch (e) { return { ok: false, message: e.message }; }
 		}
 

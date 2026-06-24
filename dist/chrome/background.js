@@ -328,9 +328,9 @@ function mapRunnerResult(r, filenameHint) {
 		return {
 			ok: true,
 			password: null,
-			filename: null,
-			message: "Учебник-презентация (" + r.slides + " слайдов): открыт диалог печати — " +
-				"выберите «Сохранить как PDF». Текст выделяется и копируется."
+			filename: r.filename || null,
+			message: "Готово! Учебник-презентация (" + r.slides + " слайдов) скачан как PDF " +
+				"«" + (r.filename || "презентация.pdf") + "». Текст выделяется и копируется."
 		};
 	}
 	if (r.mode === "images") {
@@ -424,7 +424,7 @@ async function downloadBook({ url }) {
 		let injected = false;
 		try {
 			await injectFilesAllFrames(tabId,
-				["lib/pdf.min.js", "lib/jspdf.umd.min.js", "lib/rd-decrypt.js"]);
+				["lib/pdf.min.js", "lib/jspdf.umd.min.js", "lib/rd-fonts.js", "lib/rd-decrypt.js"]);
 			injected = true;
 		} catch (_) { /* restricted page — fall back below */ }
 
