@@ -171,7 +171,104 @@
 	const isPdf = (b) =>
 		b && b.length > 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
 
+	/* ---- iSpring Suite presentation (slides) -> text PDF via print ---- */
+
+	function escapeHtml(s) {
+		return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+	}
+
+	// iSpring stores notes/transcript as HTML; turn it into clean plain text
+	// while keeping paragraph breaks.
+	function cleanNotes(h) {
+		if (!h) return "";
+		return h
+			.replace(/<\s*(br|p|div|li|tr)[^>]*>/gi, "\n")
+			.replace(/<[^>]+>/g, "")
+			.replace(/&nbsp;/gi, " ").replace(/&laquo;/gi, "«").replace(/&raquo;/gi, "»")
+			.replace(/&mdash;/gi, "—").replace(/&ndash;/gi, "–")
+			.replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+			.replace(/&quot;/gi, '"').replace(/&[a-z]+;/gi, " ")
+			.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+	}
+
+	// zlib(base64) -> string, used for the presentation manifest (presInfo).
+	async function inflateB64(b64) {
+		const bin = atob(b64);
+		const bytes = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+		const ds = new DecompressionStream("deflate");
+		const buf = await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();
+		return new TextDecoder("utf-8").decode(buf);
+	}
+
+	// Returns { ok, title, subtitle, slides:[{title,notes}] } if this frame is an
+	// iSpring presentation, otherwise { ok:false }.
+	async function extractPresentation() {
+		const html = document.documentElement.outerHTML;
+		const m = html.match(/presInfo\s*=\s*"([A-Za-z0-9+/=]+)"/);
+		if (!m) return { ok: false };
+		let obj;
+		try { obj = JSON.parse(await inflateB64(m[1])); } catch (_) { return { ok: false }; }
+		if (!obj || !Array.isArray(obj.s) || !obj.s.length) return { ok: false };
+		const slides = obj.s.map((s) => ({
+			title: (s.t || "").trim(),
+			subtitle: (s.x || "").replace(/\r/g, "").split("\n").map((x) => x.trim()).filter(Boolean).join(" · "),
+			notes: cleanNotes(s.n)
+		}));
+		const title = (document.title || slides[0].subtitle || slides[0].title || "Презентация").trim();
+		return { ok: true, title, slides };
+	}
+
+	function buildPresentationHtml(pres) {
+		const parts = [];
+		parts.push('<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>' +
+			escapeHtml(pres.title) + "</title><style>" +
+			"@page{margin:18mm}" +
+			'body{font:14px/1.6 Georgia,"Times New Roman",serif;color:#111}' +
+			"h1{font-size:22px;text-align:center;margin:0 0 6px}" +
+			".sub{text-align:center;color:#555;margin:0 0 28px;font-size:13px}" +
+			"h2{font-size:16px;color:#1a3a7a;border-bottom:1px solid #ccd;padding-bottom:4px;margin:26px 0 10px;page-break-after:avoid}" +
+			".slide{page-break-inside:avoid;margin-bottom:14px}" +
+			".num{color:#8a93a6}" +
+			"p{margin:0 0 8px;text-align:justify}" +
+			"</style></head><body>");
+		parts.push("<h1>" + escapeHtml(pres.title) + "</h1>");
+		parts.push('<div class="sub">' + escapeHtml(pres.slides.length + " слайдов · скачано расширением «Помощь росдистантикам»") + "</div>");
+		pres.slides.forEach((s, i) => {
+			parts.push('<div class="slide"><h2><span class="num">' + (i + 1) + ".</span> " + escapeHtml(s.title || "Слайд " + (i + 1)) + "</h2>");
+			const text = s.notes || s.subtitle || "";
+			text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+				.forEach((p) => parts.push("<p>" + escapeHtml(p).replace(/\n/g, "<br>") + "</p>"));
+			parts.push("</div>");
+		});
+		parts.push("</body></html>");
+		return parts.join("");
+	}
+
+	function printHtml(htmlDoc) {
+		const ifr = document.createElement("iframe");
+		ifr.style.cssText = "visibility:hidden;display:none;";
+		document.body.appendChild(ifr);
+		ifr.src = URL.createObjectURL(new Blob([htmlDoc], { type: "text/html" }));
+		ifr.onload = () => setTimeout(() => {
+			ifr.focus();
+			ifr.contentWindow.print();
+			setTimeout(() => ifr.remove(), 1500);
+		}, 400);
+	}
+
 	globalThis.__rdDownloadBook = async function (workerUrl) {
+		// 1) iSpring Suite presentation (slides) -> text PDF via print
+		let pres;
+		try { pres = await extractPresentation(); } catch (_) { pres = { ok: false }; }
+		if (pres.ok) {
+			try {
+				printHtml(buildPresentationHtml(pres));
+				return { ok: true, mode: "presentation", slides: pres.slides.length, title: pres.title };
+			} catch (e) { return { ok: false, message: e.message }; }
+		}
+
+		// 2) flip-book (iSpring viewer / PDF) or rendered images
 		const info = extract();
 		if (!info.ok) return { skip: true };
 

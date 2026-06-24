@@ -324,6 +324,15 @@ function mapRunnerResult(r, filenameHint) {
 		}
 		return { ok: false, message: r.message || "Не удалось обработать учебник." };
 	}
+	if (r.mode === "presentation") {
+		return {
+			ok: true,
+			password: null,
+			filename: null,
+			message: "Учебник-презентация (" + r.slides + " слайдов): открыт диалог печати — " +
+				"выберите «Сохранить как PDF». Текст выделяется и копируется."
+		};
+	}
 	if (r.mode === "images") {
 		return {
 			ok: true,
