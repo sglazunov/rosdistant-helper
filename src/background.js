@@ -307,9 +307,9 @@ function injectFilesAllFrames(tabId, files) {
 }
 
 // Called inside each frame; delegates to the handler injected from rd-decrypt.js.
-function inj_callRunner(workerUrl) {
+function inj_callRunner(workerUrl, qpdfWasmUrl) {
 	if (typeof globalThis.__rdDownloadBook !== "function") return { skip: true, noRunner: true };
-	return globalThis.__rdDownloadBook(workerUrl);
+	return globalThis.__rdDownloadBook(workerUrl, qpdfWasmUrl);
 }
 
 function mapRunnerResult(r, filenameHint) {
@@ -420,11 +420,12 @@ async function downloadBook({ url }) {
 	}
 
 	const workerUrl = api.runtime.getURL("lib/pdf.worker.min.js");
+	const qpdfWasmUrl = api.runtime.getURL("lib/qpdf.wasm");
 	try {
 		let injected = false;
 		try {
 			await injectFilesAllFrames(tabId,
-				["lib/pdf.min.js", "lib/jspdf.umd.min.js", "lib/rd-fonts.js", "lib/rd-decrypt.js"]);
+				["lib/qpdf.js", "lib/pdf.min.js", "lib/jspdf.umd.min.js", "lib/rd-fonts.js", "lib/rd-decrypt.js"]);
 			injected = true;
 		} catch (_) { /* restricted page — fall back below */ }
 
@@ -432,7 +433,7 @@ async function downloadBook({ url }) {
 			const attempts = openedTab ? 10 : 4;
 			for (let i = 0; i < attempts; i++) {
 				let results = [];
-				try { results = await execInTab(tabId, inj_callRunner, [workerUrl]); } catch (_) {}
+				try { results = await execInTab(tabId, inj_callRunner, [workerUrl, qpdfWasmUrl]); } catch (_) {}
 				const acted = results.find((r) => r && r.result && !r.result.skip);
 				if (acted) {
 					const mapped = mapRunnerResult(acted.result);

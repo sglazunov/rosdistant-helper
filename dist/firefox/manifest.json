@@ -3,7 +3,7 @@
 	"name": "Помощь росдистантикам — Rosdistant Helper",
 	"short_name": "Rosdistant Helper",
 	"description": "Скачивает учебники и сохраняет тесты с платформы Росдистант в один клик — по ссылке или прямо с открытой страницы.",
-	"version": "1.5.1",
+	"version": "1.6.0",
 	"icons": {
 		"16": "icons/16.png",
 		"32": "icons/32.png",
@@ -24,7 +24,7 @@
 	},
 	"web_accessible_resources": [
 		{
-			"resources": ["lib/pdf.worker.min.js"],
+			"resources": ["lib/pdf.worker.min.js", "lib/qpdf.wasm"],
 			"matches": ["https://*.rosdistant.ru/*"]
 		}
 	],

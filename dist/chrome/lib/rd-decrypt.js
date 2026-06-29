@@ -113,6 +113,40 @@
 		}
 	}
 
+	// Strips the password losslessly with qpdf (WebAssembly). Works for normal
+	// encrypted PDFs (keeps the text layer, fast, small output). Returns the
+	// unlocked bytes, or null if qpdf can't handle the file (e.g. iSpring's
+	// off-spec /Length 0 streams) — then the caller falls back to pdf.js.
+	async function qpdfDecrypt(bytes, password, wasmUrl) {
+		const factory = (typeof Module !== "undefined") ? Module : (globalThis.Module || null);
+		if (!factory || !password) return null;
+		let wasmBinary;
+		try { wasmBinary = await (await fetch(wasmUrl)).arrayBuffer(); } catch (_) { return null; }
+		return new Promise((resolve) => {
+			let done = false;
+			const finish = (v) => { if (!done) { done = true; resolve(v); } };
+			try {
+				factory({
+					noInitialRun: true, print: () => {}, printErr: () => {},
+					instantiateWasm: (imports, cb) => {
+						WebAssembly.instantiate(wasmBinary, imports)
+							.then((o) => cb(o.instance, o.module)).catch(() => cb(null));
+						return {};
+					}
+				}).then((m) => {
+					try {
+						m.FS.writeFile("in.pdf", bytes);
+						try { m.callMain(["--decrypt", "--password=" + password, "in.pdf", "out.pdf"]); } catch (_) {}
+						let o = null;
+						try { o = m.FS.readFile("out.pdf"); } catch (_) {}
+						finish(o && isPdf(o) ? o : null);
+					} catch (_) { finish(null); }
+				}).catch(() => finish(null));
+			} catch (_) { finish(null); }
+			setTimeout(() => finish(null), 120000);
+		});
+	}
+
 	// Decrypts with pdf.js and rebuilds an unlocked image-based PDF. Returns the
 	// new PDF bytes (Uint8Array), or null if it couldn't be done.
 	async function rebuildUnlocked(bytes, password, workerUrl) {
@@ -266,7 +300,7 @@
 		return new Uint8Array(doc.output("arraybuffer"));
 	}
 
-	globalThis.__rdDownloadBook = async function (workerUrl) {
+	globalThis.__rdDownloadBook = async function (workerUrl, qpdfWasmUrl) {
 		// 1) iSpring Suite presentation (slides) -> text PDF via print
 		let pres;
 		try { pres = await extractPresentation(); } catch (_) { pres = { ok: false }; }
@@ -304,12 +338,25 @@
 
 		const filename = sanitize(info.title) + ".pdf";
 
-		// decrypt + rebuild as an unlocked PDF
+		// (a) lossless: qpdf strips the password and keeps the text layer — best
+		//     for normal encrypted PDFs (incl. huge ones — no per-page rendering).
+		if (info.password && isPdf(bytes)) {
+			try {
+				const unlocked = await qpdfDecrypt(bytes.slice(), info.password, qpdfWasmUrl);
+				if (unlocked && isPdf(unlocked)) {
+					saveBytes(unlocked, filename, "application/pdf");
+					return { ok: true, mode: "file", method: "qpdf", decrypted: true, filename, password: null };
+				}
+			} catch (_) {}
+		}
+
+		// (b) fallback: pdf.js render -> image PDF (for iSpring's off-spec files
+		//     that qpdf rejects). Heavier, but opens what qpdf can't.
 		try {
 			const rebuilt = await rebuildUnlocked(bytes.slice(), info.password, workerUrl);
 			if (rebuilt && isPdf(rebuilt)) {
 				saveBytes(rebuilt, filename, "application/pdf");
-				return { ok: true, mode: "file", decrypted: true, filename, password: null };
+				return { ok: true, mode: "file", method: "render", decrypted: true, filename, password: null };
 			}
 		} catch (_) {}
 

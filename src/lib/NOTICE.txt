@@ -1,9 +1,12 @@
 Third-party libraries bundled in this extension:
 
+- qpdf (qpdf.js, qpdf.wasm) — © Jay Berkenbilt, Apache-2.0; compiled to
+  WebAssembly by @jspawn/qpdf-wasm. Strips PDF passwords losslessly (keeps the
+  text layer) for normal encrypted textbooks. See qpdf-LICENSE.txt.
 - pdf.js (pdf.min.js, pdf.worker.min.js) — © Mozilla, Apache-2.0.
-  https://github.com/mozilla/pdf.js
+  https://github.com/mozilla/pdf.js  Opens iSpring's off-spec PDFs that strict
+  tools reject; pages are re-rendered into a new unlocked PDF when qpdf can't.
 - jsPDF (jspdf.umd.min.js) — © James Hall and contributors, MIT.
-  https://github.com/parallax/jsPDF
-
-Used to open password-protected Rosdistant textbooks (which iSpring writes
-off-spec so generic tools fail) and rebuild them as a normal, unlocked PDF.
+  https://github.com/parallax/jsPDF  Builds rebuilt / presentation PDFs.
+- Roboto (rd-fonts.js, subset Latin+Cyrillic) — © Google, Apache-2.0. Embedded
+  in jsPDF so presentation PDFs have selectable Cyrillic text.
