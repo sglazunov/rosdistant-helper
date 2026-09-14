@@ -1,9 +1,9 @@
 {
 	"manifest_version": 3,
-	"name": "Помощь росдистантикам — Rosdistant Helper",
-	"short_name": "Rosdistant Helper",
-	"description": "Скачивает учебники и сохраняет тесты с платформы Росдистант в один клик — по ссылке или прямо с открытой страницы.",
-	"version": "1.6.1",
+	"name": "Росдистант Помощник — учебники в PDF",
+	"short_name": "Росдистант Помощник",
+	"description": "Скачивайте учебники, конспекты iSpring и результаты тестов из Росдистанта в PDF и HTML — в один клик, офлайн.",
+	"version": "1.6.2",
 	"icons": {
 		"16": "icons/16.png",
 		"32": "icons/32.png",
@@ -12,7 +12,7 @@
 	},
 	"action": {
 		"default_popup": "popup.html",
-		"default_title": "Помощь росдистантикам"
+		"default_title": "Росдистант Помощник"
 	},
 	"permissions": ["scripting", "activeTab", "downloads", "storage", "clipboardWrite"],
 	"host_permissions": [

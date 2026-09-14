@@ -4,6 +4,14 @@
  */
 const api = (typeof browser !== "undefined") ? browser : chrome;
 
+/* --- Footer links (SEO / поддержка). Пустой url => ссылка не показывается. --- */
+const LINKS = [
+	{ label: "Оценить", url: "https://chromewebstore.google.com/detail/oelgimhemmpiadfihgjbdhmhdhbonpce" },
+	{ label: "GitHub", url: "https://github.com/sglazunov/rosdistant-helper" },
+	{ label: "Telegram", url: "" },        // TODO: вставить ссылку на канал
+	{ label: "Поддержать", url: "" }       // TODO: вставить ссылку на Boosty/донат
+];
+
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
 const statusText = statusEl.querySelector(".status-text");
@@ -136,3 +144,23 @@ toggle.addEventListener("click", () => {
 	toggle.setAttribute("aria-expanded", String(!open));
 	body.hidden = open;
 });
+
+// Footer links + version (from manifest).
+(function initFooter() {
+	const nav = $("ftr-links");
+	if (nav) {
+		LINKS.filter((l) => l.url).forEach((l) => {
+			const a = document.createElement("a");
+			a.href = l.url;
+			a.textContent = l.label;
+			a.target = "_blank";
+			a.rel = "noopener noreferrer";
+			nav.appendChild(a);
+		});
+	}
+	try {
+		const v = api.runtime.getManifest().version;
+		const el = $("ftr-ver");
+		if (el && v) el.textContent = "v" + v;
+	} catch (_) {}
+})();

@@ -1,16 +1,24 @@
-# Помощь росдистантикам · Rosdistant Helper
+# Росдистант Помощник (RHG)
 
+Расширение для браузера: скачивайте **учебники, конспекты iSpring и результаты
+тестов из Росдистанта** в PDF и HTML — в один клик, полностью офлайн.
+
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-установить-blue)](https://chromewebstore.google.com/detail/oelgimhemmpiadfihgjbdhmhdhbonpce)
 ![manifest](https://img.shields.io/badge/manifest-v3-blue)
 ![browsers](https://img.shields.io/badge/Chrome%20%7C%20Yandex%20%7C%20Edge%20%7C%20Opera%20%7C%20Firefox%20%7C%20Safari-supported-success)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-Браузерное расширение, которое **скачивает учебники** и **сохраняет тесты** с
-платформы [Росдистант](https://rosdistant.ru) (`edu.rosdistant.ru`, Moodle +
-iSpring) **в один клик** — по ссылке или прямо с открытой страницы.
+## Возможности
 
-Это развитие проекта [`opiums9/rosdistant_export_test`](https://github.com/opiums9/rosdistant_export_test):
-к экспорту тестов добавлена **автоматическая загрузка учебников** и поддержка
-**Chrome, Yandex, Edge, Opera, Firefox и Safari**.
+- Скачивание защищённых **PDF-учебников (флипбук)** без пароля — текст остаётся выделяемым
+- **Конспект и заголовки слайдов** из презентаций iSpring в PDF
+- Сохранение пройденных **тестов** в HTML и PDF
+- Автоматический **поиск и показ пароля** от материалов
+- Поддержка **Chrome, Яндекс Браузера, Edge, Opera, Firefox, Safari**
+- Всё работает **офлайн**: данные не покидают ваш компьютер
+
+«Росдистант Помощник» — развитие проекта
+[`opiums9/rosdistant_export_test`](https://github.com/opiums9/rosdistant_export_test).
 
 > ⚠️ **Дисклеймер.** Инструмент учебный, для **личного** использования студентами,
 > у которых **уже есть легальный доступ** к материалам. Расширение ничего не

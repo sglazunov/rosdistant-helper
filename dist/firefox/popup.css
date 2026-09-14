@@ -351,7 +351,25 @@ body {
 	line-height: 1.5;
 	color: var(--muted);
 	text-align: center;
+	border-top: 1px solid var(--border);
+	padding-top: 10px;
 }
+.ftr-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 6px 14px;
+	margin-bottom: 8px;
+}
+.ftr-links a {
+	color: var(--brand);
+	text-decoration: none;
+	font-size: 11.5px;
+	font-weight: 600;
+}
+.ftr-links a:hover { text-decoration: underline; }
+.ftr-brand { font-weight: 600; color: var(--fg); opacity: .8; }
+.ftr-note { margin-top: 4px; }
 
 @media (prefers-reduced-motion: reduce) {
 	* { animation: none !important; transition: none !important; }

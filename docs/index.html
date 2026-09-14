@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Росдистант Помощник — скачать учебники и конспекты в PDF</title>
+<meta name="description" content="Расширение «Росдистант Помощник»: скачивание учебников-флипбуков, конспектов iSpring и результатов тестов в PDF и HTML. Один клик, работает офлайн.">
+<link rel="canonical" href="https://sglazunov.github.io/rosdistant-helper/">
+<meta name="theme-color" content="#4f6ef7">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Росдистант Помощник — учебники и конспекты в PDF">
+<meta property="og:description" content="Скачивайте учебники, конспекты iSpring и результаты тестов из Росдистанта в PDF и HTML — в один клик, офлайн.">
+<meta property="og:url" content="https://sglazunov.github.io/rosdistant-helper/">
+<meta property="og:locale" content="ru_RU">
+
+<!-- SoftwareApplication schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Росдистант Помощник",
+  "operatingSystem": "Chrome, Yandex Browser, Edge, Opera, Firefox, Safari",
+  "applicationCategory": "BrowserApplication",
+  "description": "Скачивание учебников, конспектов iSpring и результатов тестов из Росдистанта в PDF и HTML. Работает офлайн.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "RUB" },
+  "url": "https://chromewebstore.google.com/detail/oelgimhemmpiadfihgjbdhmhdhbonpce",
+  "author": { "@type": "Organization", "name": "RHG" }
+}
+</script>
+
+<!-- FAQ schema (rich results) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Как скачать учебник из Росдистанта в PDF?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Установите расширение «Росдистант Помощник», войдите в Росдистант, откройте учебник и нажмите кнопку расширения «Скачать учебник». Файл сохранится в PDF." } },
+    { "@type": "Question", "name": "Как сохранить конспект из презентации iSpring?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Откройте учебник-презентацию iSpring и нажмите «Скачать учебник» — расширение извлечёт заголовки и весь конспект слайдов и соберёт их в PDF с выделяемым текстом." } },
+    { "@type": "Question", "name": "Как скачать материал за паролем?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Расширение автоматически находит пароль от документа и снимает защиту, сохраняя обычный PDF. Если снять пароль не удалось, оно покажет пароль в окне расширения." } },
+    { "@type": "Question", "name": "Работает ли в Яндекс Браузере и Firefox?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Да. Поддерживаются Chrome, Яндекс Браузер, Microsoft Edge, Opera, Firefox и Safari." } }
+  ]
+}
+</script>
+
+<style>
+:root{--bg:#f4f6fb;--fg:#10151f;--muted:#5b6472;--card:#fff;--border:#e6eaf1;--brand:#4f6ef7;--brand2:#7c4ff7}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--fg:#eef1f6;--muted:#9aa3b2;--card:#171b22;--border:#272d38}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 -apple-system,"Segoe UI",system-ui,Roboto,Arial,sans-serif;color:var(--fg);background:var(--bg)}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px}
+a{color:var(--brand)}
+.hero{text-align:center;padding:56px 20px 40px}
+.logo{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:inline-grid;place-items:center;color:#fff;font-weight:700;font-size:22px;margin-bottom:18px}
+h1{font-size:34px;margin:0 0 8px;letter-spacing:-.5px}
+.lead{font-size:19px;color:var(--muted);margin:0 auto 24px;max-width:620px}
+.cta{display:inline-block;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;text-decoration:none;font-weight:650;padding:13px 26px;border-radius:12px;box-shadow:0 6px 18px rgba(79,110,247,.35)}
+.cta.ghost{background:transparent;color:var(--brand);border:1.5px solid var(--border);box-shadow:none;margin-left:8px}
+section{padding:28px 0;border-top:1px solid var(--border)}
+h2{font-size:24px;margin:0 0 18px}
+h3{font-size:17px;margin:0 0 6px}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px}
+.steps{counter-reset:s}
+.step{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:12px;position:relative;padding-left:56px}
+.step::before{counter-increment:s;content:counter(s);position:absolute;left:16px;top:16px;width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700}
+.faq details{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:2px 16px;margin-bottom:10px}
+.faq summary{cursor:pointer;font-weight:600;padding:12px 0}
+.faq p{margin:0 0 12px;color:var(--muted)}
+footer{padding:30px 0 50px;color:var(--muted);font-size:14px;text-align:center;border-top:1px solid var(--border)}
+footer a{margin:0 8px}
+.disc{font-size:12.5px;margin-top:12px;opacity:.85}
+.muted{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="logo">РП</div>
+  <h1>Росдистант Помощник</h1>
+  <p class="lead">Скачайте учебник из Росдистанта за 5 секунд. Учебники-флипбуки, конспекты презентаций iSpring и результаты тестов — в PDF и HTML, в один клик и полностью офлайн.</p>
+  <a class="cta" href="https://chromewebstore.google.com/detail/oelgimhemmpiadfihgjbdhmhdhbonpce">Установить из Chrome Web Store</a>
+  <a class="cta ghost" href="https://github.com/sglazunov/rosdistant-helper">Открытый код на GitHub</a>
+</header>
+
+<div class="wrap">
+
+  <section>
+    <h2>Что умеет расширение</h2>
+    <div class="grid">
+      <div class="card"><h3>Учебники в PDF</h3><p class="muted">Скачивание защищённых учебников-флипбуков без пароля. Текст остаётся выделяемым и копируемым.</p></div>
+      <div class="card"><h3>Конспект iSpring</h3><p class="muted">Из презентаций iSpring извлекаются заголовки и весь конспект слайдов и собираются в аккуратный PDF.</p></div>
+      <div class="card"><h3>Результаты тестов</h3><p class="muted">Сохранение завершённой попытки теста в HTML и PDF — удобно готовиться к пересдаче.</p></div>
+      <div class="card"><h3>Пароль автоматически</h3><p class="muted">Расширение само находит пароль от материала, снимает защиту или показывает пароль.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Как это работает</h2>
+    <div class="steps">
+      <div class="step"><h3>Войдите в Росдистант</h3><p class="muted">Откройте edu.rosdistant.ru и авторизуйтесь как обычно — расширение работает через вашу сессию.</p></div>
+      <div class="step"><h3>Откройте учебник или тест</h3><p class="muted">Учебник-флипбук, презентацию iSpring или завершённую попытку теста.</p></div>
+      <div class="step"><h3>Нажмите кнопку расширения</h3><p class="muted">«Скачать учебник» — материал сохранится в PDF (или тест в HTML/PDF). Готово.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Почему это безопасно</h2>
+    <div class="grid">
+      <div class="card"><h3>Всё офлайн</h3><p class="muted">Обработка идёт локально в браузере. Данные, файлы и пароли никуда не отправляются.</p></div>
+      <div class="card"><h3>Открытый код</h3><p class="muted">Исходники открыты на <a href="https://github.com/sglazunov/rosdistant-helper">GitHub</a> — можно проверить, что делает расширение.</p></div>
+    </div>
+  </section>
+
+  <section class="faq">
+    <h2>Частые вопросы</h2>
+    <details><summary>Как скачать учебник из Росдистанта в PDF?</summary><p>Установите «Росдистант Помощник», войдите в Росдистант, откройте учебник и нажмите «Скачать учебник» — файл сохранится в PDF.</p></details>
+    <details><summary>Как сохранить конспект из презентации iSpring?</summary><p>Откройте презентацию iSpring и нажмите «Скачать учебник». Расширение извлечёт заголовки и весь конспект слайдов и соберёт их в PDF с выделяемым текстом.</p></details>
+    <details><summary>Как скачать материал за паролем?</summary><p>Расширение автоматически находит пароль и снимает защиту, сохраняя обычный PDF. Если снять не удалось — показывает пароль в окне расширения.</p></details>
+    <details><summary>Работает ли в Яндекс Браузере и Firefox?</summary><p>Да — поддерживаются Chrome, Яндекс Браузер, Microsoft Edge, Opera, Firefox и Safari.</p></details>
+  </section>
+
+</div>
+
+<footer>
+  <a href="https://chromewebstore.google.com/detail/oelgimhemmpiadfihgjbdhmhdhbonpce">Chrome Web Store</a> ·
+  <a href="https://github.com/sglazunov/rosdistant-helper">GitHub</a>
+  <!-- TODO: добавить ссылки Telegram и Boosty, когда будут -->
+  <div class="disc">Независимый проект разработчика RHG. Не является официальным продуктом Росдистанта и не связан с вузом. Используйте только для материалов, к которым у вас есть легальный доступ.</div>
+</footer>
+
+</body>
+</html>
