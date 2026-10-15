@@ -324,6 +324,24 @@ function mapRunnerResult(r, filenameHint) {
 		}
 		return { ok: false, message: r.message || "Не удалось обработать учебник." };
 	}
+	if (r.mode === "scorm") {
+		return {
+			ok: true,
+			password: null,
+			filename: r.filename || null,
+			message: "Готово! SCORM-учебник скачан целиком как PDF «" + (r.filename || "учебник.pdf") + "»" +
+				(r.sections ? " (разделов: " + r.sections + ")" : "") + ". Текст выделяется и копируется."
+		};
+	}
+	if (r.mode === "scorm-html") {
+		return {
+			ok: true,
+			password: null,
+			filename: r.filename || null,
+			message: "Готово! Учебник сохранён как HTML-страница «" + (r.filename || "учебник.html") +
+				"» — открывается в любом браузере офлайн."
+		};
+	}
 	if (r.mode === "presentation") {
 		return {
 			ok: true,
@@ -404,54 +422,88 @@ async function fallbackDownload(tabId, filePathHint, passwordHint) {
 	return { ok: false, message: book.message || "Учебник не найден." };
 }
 
-async function downloadBook({ url }) {
-	let tabId;
-	let openedTab = false;
+const INJECT_FILES = ["lib/qpdf.js", "lib/pdf.min.js", "lib/jspdf.umd.min.js",
+	"lib/rd-fonts.js", "lib/rd-scorm.js", "lib/rd-decrypt.js"];
 
-	if (url) {
-		if (!/^https?:\/\/[^/]*rosdistant\.ru/i.test(url)) {
-			return { ok: false, message: "Ссылка должна вести на домен rosdistant.ru." };
-		}
-		tabId = await openTabAndWait(url);
-		openedTab = true;
-	} else {
-		tabId = await getActiveTabId();
-		if (!tabId) return { ok: false, message: "Нет активной вкладки." };
-	}
-
+// Injects the handlers into every frame of the tab and runs the downloader.
+async function processTab(tabId, attempts) {
 	const workerUrl = api.runtime.getURL("lib/pdf.worker.min.js");
 	const qpdfWasmUrl = api.runtime.getURL("lib/qpdf.wasm");
+	let injected = false;
 	try {
-		let injected = false;
-		try {
-			await injectFilesAllFrames(tabId,
-				["lib/qpdf.js", "lib/pdf.min.js", "lib/jspdf.umd.min.js", "lib/rd-fonts.js", "lib/rd-decrypt.js"]);
-			injected = true;
-		} catch (_) { /* restricted page — fall back below */ }
+		await injectFilesAllFrames(tabId, INJECT_FILES);
+		injected = true;
+	} catch (_) { /* restricted page — fall back below */ }
 
-		if (injected) {
-			const attempts = openedTab ? 10 : 4;
-			for (let i = 0; i < attempts; i++) {
-				let results = [];
-				try { results = await execInTab(tabId, inj_callRunner, [workerUrl, qpdfWasmUrl]); } catch (_) {}
-				const acted = results.find((r) => r && r.result && !r.result.skip);
-				if (acted) {
-					const mapped = mapRunnerResult(acted.result);
-					if (mapped.ok || !mapped._fallbackFile) return mapped;
-					return await fallbackDownload(tabId, mapped._fallbackFile, mapped._password);
-				}
-				await sleep(1200);
+	if (injected) {
+		for (let i = 0; i < attempts; i++) {
+			let results = [];
+			try { results = await execInTab(tabId, inj_callRunner, [workerUrl, qpdfWasmUrl]); } catch (_) {}
+			const acted = results.find((r) => r && r.result && !r.result.skip);
+			if (acted) {
+				const mapped = mapRunnerResult(acted.result);
+				if (mapped.ok || !mapped._fallbackFile) return mapped;
+				return await fallbackDownload(tabId, mapped._fallbackFile, mapped._password);
+			}
+			await sleep(1200);
+		}
+	}
+	// the in-page flow never ran or never found the book — try the simple path.
+	return await fallbackDownload(tabId, null, null);
+}
+
+function queryTabs(q) {
+	return new Promise((resolve) => {
+		try { api.tabs.query(q, (tabs) => { void api.runtime.lastError; resolve(tabs || []); }); }
+		catch (_) { resolve([]); }
+	});
+}
+
+// SCORM lectures open in a separate popup window (display=popup) that has no
+// extensions toolbar, so the button is clicked from another window. Find the
+// open player there (host permissions let us match rosdistant URLs).
+async function findScormTabs(excludeId) {
+	const tabs = await queryTabs({
+		url: [
+			"https://*.rosdistant.ru/mod/scorm/player.php*",
+			"https://*.rosdistant.ru/pluginfile.php/*/mod_scorm/content/*"
+		]
+	});
+	return tabs.filter((t) => t && t.id !== excludeId);
+}
+
+async function downloadBook({ url }) {
+	try {
+		if (url) {
+			if (!/^https?:\/\/[^/]*rosdistant\.ru/i.test(url)) {
+				return { ok: false, message: "Ссылка должна вести на домен rosdistant.ru." };
+			}
+			const tabId = await openTabAndWait(url);
+			try {
+				return await processTab(tabId, 10);
+			} finally {
+				// keep the tab long enough for the in-page download to start
+				setTimeout(() => api.tabs.remove(tabId, () => void api.runtime.lastError), 4000);
 			}
 		}
 
-		// the in-page flow never ran or never found the book — try the simple path.
-		return await fallbackDownload(tabId, null, null);
+		const tabId = await getActiveTabId();
+		if (!tabId) return { ok: false, message: "Нет активной вкладки." };
+		const res = await processTab(tabId, 4);
+		if (res && res.ok) return res;
+
+		// nothing in the active tab — maybe a SCORM player is open in its own window
+		for (const t of await findScormTabs(tabId)) {
+			const r = await processTab(t.id, 4);
+			if (r && r.ok) return r;
+		}
+		if (res && !res.ok) {
+			res.message = (res.message || "Учебник не найден.") +
+				" Если это SCORM-лекция — сначала откройте её (кнопка «Войти»/«Продолжить») и нажмите снова.";
+		}
+		return res;
 	} finally {
 		setProgressBadge(1, 1); // clear badge
-		if (openedTab && tabId) {
-			// keep the tab long enough for the in-page download to start
-			setTimeout(() => api.tabs.remove(tabId, () => void api.runtime.lastError), 4000);
-		}
 	}
 }
 

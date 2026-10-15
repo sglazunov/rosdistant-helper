@@ -147,8 +147,33 @@
 		});
 	}
 
-	// Decrypts with pdf.js and rebuilds an unlocked image-based PDF. Returns the
-	// new PDF bytes (Uint8Array), or null if it couldn't be done.
+	// Invisible, selectable/searchable text over the page image (like an OCR'd
+	// "sandwich" PDF), placed from pdf.js text positions.
+	async function addTextLayer(out, page, vp, fam) {
+		let tc;
+		try { tc = await page.getTextContent(); } catch (_) { return; }
+		out.setFont(fam, "normal");
+		for (const it of tc.items) {
+			const str = String(it.str || "").normalize("NFC").replace(/[̀-ͯ]/g, "");
+			if (!str.trim()) continue;
+			const tx = PDFJS.Util.transform(vp.transform, it.transform);
+			const fh = Math.hypot(tx[2], tx[3]);
+			if (!(fh > 0.5)) continue;
+			out.setFontSize(fh);
+			const opts = { renderingMode: "invisible", baseline: "alphabetic" };
+			const natural = out.getTextWidth(str);
+			if (natural > 0 && it.width > 0) opts.horizontalScale = Math.max(0.2, Math.min(5, it.width / natural));
+			const angle = Math.atan2(tx[1], tx[0]);
+			if (Math.abs(angle) > 0.01) opts.angle = -angle * 180 / Math.PI;
+			try { out.text(str, tx[4], tx[5], opts); } catch (_) {}
+		}
+	}
+
+	// Renders every page with pdf.js into ONE image per page (+ invisible text
+	// layer) and rebuilds a normal, unlocked PDF. Used for iSpring's off-spec
+	// files qpdf can't parse, and to "flatten" mosaic PDFs whose pages are made
+	// of dozens of image tiles (those render chopped and jerky in viewers).
+	// `password` may be null when `bytes` are already decrypted.
 	async function rebuildUnlocked(bytes, password, workerUrl) {
 		if (!PDFJS || !JSPDF || !JSPDF.jsPDF) return null;
 		await ensureWorker(workerUrl);
@@ -158,23 +183,36 @@
 		} catch (_) { return null; }
 
 		const N = doc.numPages;
+		const F = globalThis.__rdFonts;
 		let out = null;
+		let fam = null;
 		const canvas = document.createElement("canvas");
 		const ctx = canvas.getContext("2d");
 		try {
 			for (let i = 1; i <= N; i++) {
 				const page = await doc.getPage(i);
-				const vp = page.getViewport({ scale: 2 });
+				const vp1 = page.getViewport({ scale: 1 });   // page size in pt
+				const vp = page.getViewport({ scale: 2 });    // render resolution
 				canvas.width = Math.ceil(vp.width);
 				canvas.height = Math.ceil(vp.height);
+				ctx.fillStyle = "#fff";
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
 				await page.render({ canvasContext: ctx, viewport: vp }).promise;
 				const jpg = canvas.toDataURL("image/jpeg", 0.82);
-				const wpt = (vp.width * 72) / 96;
-				const hpt = (vp.height * 72) / 96;
-				const orient = wpt > hpt ? "landscape" : "portrait";
-				if (i === 1) out = new JSPDF.jsPDF({ unit: "pt", format: [wpt, hpt], orientation: orient });
-				else out.addPage([wpt, hpt], orient);
-				out.addImage(jpg, "JPEG", 0, 0, wpt, hpt);
+				const w = vp1.width, h = vp1.height;
+				const orient = w > h ? "landscape" : "portrait";
+				if (i === 1) {
+					out = new JSPDF.jsPDF({ unit: "pt", format: [w, h], orientation: orient, compress: true });
+					if (F && F.regular) {
+						out.addFileToVFS("RdReg.ttf", F.regular);
+						out.addFont("RdReg.ttf", "Rd", "normal");
+						fam = "Rd";
+					}
+				} else {
+					out.addPage([w, h], orient);
+				}
+				out.addImage(jpg, "JPEG", 0, 0, w, h);
+				if (fam) await addTextLayer(out, page, vp1, fam);
 				page.cleanup();
 				reportProgress(i, N);
 			}
@@ -184,6 +222,29 @@
 		canvas.width = canvas.height = 0;
 		try { return new Uint8Array(out.output("arraybuffer")); } catch (_) { return null; }
 	}
+
+	// "Mosaic" PDFs: each page is assembled from many image tiles. Image XObject
+	// dictionaries are never inside object streams, so a byte scan finds them.
+	function imagesPerPage(bytes, numPages) {
+		let n = 0;
+		try {
+			const s = new TextDecoder("latin1").decode(bytes);
+			const m = s.match(/\/Subtype\s*\/Image\b/g);
+			n = m ? m.length : 0;
+		} catch (_) { return 0; }
+		return numPages > 0 ? n / numPages : 0;
+	}
+	async function countPages(bytes) {
+		if (!PDFJS) return 0;
+		try {
+			const d = await PDFJS.getDocument({ data: bytes.slice() }).promise;
+			const n = d.numPages;
+			try { await d.destroy(); } catch (_) {}
+			return n;
+		} catch (_) { return 0; }
+	}
+	const MOSAIC_THRESHOLD = 6; // images per page above which we flatten
+	globalThis.__rdDecryptInternals = { rebuildUnlocked, imagesPerPage, countPages }; // for tests
 
 	function printImages(images, title) {
 		const body = images
@@ -222,6 +283,7 @@
 			.replace(/&mdash;/gi, "—").replace(/&ndash;/gi, "–")
 			.replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
 			.replace(/&quot;/gi, '"').replace(/&[a-z]+;/gi, " ")
+			.normalize("NFC").replace(/[̀-ͯ]/g, "") // stress marks: no glyph in the font
 			.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 	}
 
@@ -301,6 +363,27 @@
 	}
 
 	globalThis.__rdDownloadBook = async function (workerUrl, qpdfWasmUrl) {
+		// 0) SCORM package (Moodle mod_scorm) — the whole course from
+		//    json/rawStructure.json -> PDF; other SCORM engines -> HTML snapshot
+		const SC = globalThis.__rdScorm;
+		if (SC && SC.isScormFrame()) {
+			try {
+				const r = await SC.exportScorm(reportProgress);
+				if (r && r.ok && r.kind === "pdf") {
+					const filename = sanitize(r.title) + ".pdf";
+					saveBytes(r.bytes, filename, "application/pdf");
+					return { ok: true, mode: "scorm", sections: r.sections, filename };
+				}
+				if (r && r.ok && r.kind === "html") {
+					const filename = sanitize(r.title) + ".html";
+					saveBytes(r.html, filename, "text/html;charset=utf-8");
+					return { ok: true, mode: "scorm-html", filename };
+				}
+			} catch (e) {
+				return { ok: false, message: "Не удалось выгрузить SCORM-учебник: " + e.message };
+			}
+		}
+
 		// 1) iSpring Suite presentation (slides) -> text PDF via print
 		let pres;
 		try { pres = await extractPresentation(); } catch (_) { pres = { ok: false }; }
@@ -344,6 +427,16 @@
 			try {
 				const unlocked = await qpdfDecrypt(bytes.slice(), info.password, qpdfWasmUrl);
 				if (unlocked && isPdf(unlocked)) {
+					// mosaic pages (dozens of image tiles each) look chopped and jerky in
+					// viewers — flatten each page into one image + invisible text layer
+					const pages = await countPages(unlocked);
+					if (pages && imagesPerPage(unlocked, pages) > MOSAIC_THRESHOLD) {
+						const flat = await rebuildUnlocked(unlocked.slice(), null, workerUrl);
+						if (flat && isPdf(flat)) {
+							saveBytes(flat, filename, "application/pdf");
+							return { ok: true, mode: "file", method: "flatten", decrypted: true, filename, password: null, pages };
+						}
+					}
 					saveBytes(unlocked, filename, "application/pdf");
 					return { ok: true, mode: "file", method: "qpdf", decrypted: true, filename, password: null };
 				}
