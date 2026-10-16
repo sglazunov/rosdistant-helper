@@ -119,7 +119,8 @@
 	// off-spec /Length 0 streams) — then the caller falls back to pdf.js.
 	async function qpdfDecrypt(bytes, password, wasmUrl) {
 		const factory = (typeof Module !== "undefined") ? Module : (globalThis.Module || null);
-		if (!factory || !password) return null;
+		// "" is allowed: unencrypted books still go through qpdf to normalise them
+		if (!factory || password == null) return null;
 		let wasmBinary;
 		try { wasmBinary = await (await fetch(wasmUrl)).arrayBuffer(); } catch (_) { return null; }
 		return new Promise((resolve) => {
@@ -421,7 +422,30 @@
 
 		const filename = sanitize(info.title) + ".pdf";
 
-		// (a) lossless: qpdf strips the password and keeps the text layer — best
+		// (a) best case: iSpring gutted the images out into data/res/img_N.* and
+		//     left `/F` pointers behind. Pull them back in and rebuild a
+		//     monolithic PDF — real pictures AND the original text layer.
+		const RESTORE = globalThis.__rdRestore;
+		if (RESTORE && isPdf(bytes) && RESTORE.hasExternals(bytes)) {
+			try {
+				const r = await RESTORE.restore({
+					bytes: bytes.slice(),
+					password: info.password || "",
+					decrypt: (b, p) => qpdfDecrypt(b, p, qpdfWasmUrl),
+					baseUrl: document.baseURI || location.href,
+					onProgress: reportProgress
+				});
+				if (r && r.ok && isPdf(r.bytes)) {
+					saveBytes(r.bytes, filename, "application/pdf");
+					return {
+						ok: true, mode: "file", method: "restore", decrypted: true,
+						filename, password: null, restored: r.restored, total: r.total, skipped: r.skipped
+					};
+				}
+			} catch (_) {}
+		}
+
+		// (b) lossless: qpdf strips the password and keeps the text layer — best
 		//     for normal encrypted PDFs (incl. huge ones — no per-page rendering).
 		if (info.password && isPdf(bytes)) {
 			try {
@@ -443,7 +467,7 @@
 			} catch (_) {}
 		}
 
-		// (b) fallback: pdf.js render -> image PDF (for iSpring's off-spec files
+		// (c) fallback: pdf.js render -> image PDF (for iSpring off-spec files
 		//     that qpdf rejects). Heavier, but opens what qpdf can't.
 		try {
 			const rebuilt = await rebuildUnlocked(bytes.slice(), info.password, workerUrl);

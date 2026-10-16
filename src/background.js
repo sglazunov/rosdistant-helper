@@ -361,6 +361,16 @@ function mapRunnerResult(r, filenameHint) {
 		};
 	}
 	const name = r.filename || filenameHint || "учебник.pdf";
+	if (r.method === "restore") {
+		const lost = r.skipped ? " Не удалось достать: " + r.skipped + "." : "";
+		return {
+			ok: true,
+			password: null,
+			filename: name,
+			message: "Готово! Учебник «" + name + "» собран целиком: вернули " +
+				r.restored + " из " + r.total + " вырезанных картинок, текст остался выделяемым." + lost
+		};
+	}
 	if (r.decrypted) {
 		return {
 			ok: true,
@@ -423,7 +433,7 @@ async function fallbackDownload(tabId, filePathHint, passwordHint) {
 }
 
 const INJECT_FILES = ["lib/qpdf.js", "lib/pdf.min.js", "lib/jspdf.umd.min.js",
-	"lib/rd-fonts.js", "lib/rd-scorm.js", "lib/rd-decrypt.js"];
+	"lib/rd-fonts.js", "lib/rd-scorm.js", "lib/rd-restore.js", "lib/rd-decrypt.js"];
 
 // Injects the handlers into every frame of the tab and runs the downloader.
 async function processTab(tabId, attempts) {
